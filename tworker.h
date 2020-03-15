@@ -17,7 +17,7 @@ enum workerTxState {
 };
 
 
-struct  transactionionData {
+struct  transactionData {
   char IDstring[IDLEN];   // This must be a null terminated ASCII string
   int A;
   int B;
@@ -42,7 +42,7 @@ struct workerLog {
 
 struct logFile {
   int initialized;
-  struct transactionionData txData;
+  struct transactionData txData;
   struct workerLog log;
 };
 
