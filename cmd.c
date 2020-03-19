@@ -109,6 +109,7 @@ int main(int argc, char ** argv) {
   }
   else if (strcmp(argv[1], "delay") == 0) {
     msg->msgID = DELAY_RESPONSE;
+    msg->delay = atoi(argv[4]);
     sendmessage(argv[2], argv[3], msg);
     }
   else if (strcmp(argv[1], "commit") == 0) {
