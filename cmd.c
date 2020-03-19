@@ -72,7 +72,7 @@ int main(int argc, char ** argv) {
   cmd = calloc(255, 1);
   
   // parse command
-  if (strcmp(argv[0], "begin") == 0) {
+  if (strcmp(argv[1], "begin") == 0) {
     msg->msgID = BEGINTX;
     msg->tid = atoi(argv[6]);
     msg->port = atoi(argv[5]);
