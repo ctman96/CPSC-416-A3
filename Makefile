@@ -8,8 +8,9 @@ CFLAGS=-g -Werror-implicit-function-declaration -pedantic -std=gnu99
 tworker: tworker.h msg.h tworker.c
 	$(CC) $(CFLAGS) -o tworker tworker.c
 
-tmanager: tmanager.c msg.h
-	$(CC) $(CFLAGS) -o tmanager tmanager.c
+TMANAGEROBJS=tmanager.o
+tmanager: $(TMANAGEROBJS)
+	$(CC) $(CFLAGS) -o tmanager $(TMANAGEROBJS)
 
 cmd: cmd.c msg.h
 	$(CC) $(CFLAGS) -o cmd cmd.c

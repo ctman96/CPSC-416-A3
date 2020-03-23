@@ -15,6 +15,12 @@
 #include "tmanager.h"
 #include <sys/mman.h>
 #include <strings.h>
+#include <errno.h>
+
+#include "transaction_msg.h"
+#include "tmanager_begin.c"
+#include "tmanager_join.c"
+#include "tmanager_commit.c""
 
 void usage(char * cmd) {
   printf("usage: %s  portNum\n",
@@ -51,7 +57,12 @@ int main(int argc, char ** argv) {
   if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
     perror("socket creation failed"); 
     exit(-1); 
-  } 
+  }
+
+  // Set socket as non-blocking
+  int flags = fcntl(properties.sockfd, F_GETFL);
+  flags |= O_NONBLOCK;
+  fcntl(properties.sockfd, F_SETFL, flags);
 
   // Setup my server information 
   memset(&servAddr, 0, sizeof(servAddr)); 
@@ -127,27 +138,99 @@ int main(int argc, char ** argv) {
   printf("Port number:              %d\n", port);
   printf("Log file name:            %s\n", logFileName);
 
-  int n;
   int i;
   unsigned char buff[1024];
-  for (i = 0;; i = (++i % MAX_WORKERS)) {
-    struct sockaddr_in client;
+
+  int running = 1;
+  while (running) {
+    struct txMsgType message;
+    message.msgId = 0;
+
     socklen_t len;
-    bzero(&client, sizeof(client));
-    n = recvfrom(sockfd, buff, sizeof(buff), MSG_WAITALL,
-		 (struct sockaddr *) &client, &len);
-    if (n < 0) {
+    struct sockaddr_in client;
+    memset(&client, 0, sizeof(client));
+
+    int size = recvfrom(sockfd, &message, sizeof(message), 0, (struct sockaddr *) &client, &len);
+
+    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+      perror("Receiving error:");
+      running = 0;
+      abort();
+    } else if (n >= 0) {
+      printf("Got a packet\n");
+      /*txlog->transaction[i].worker[0] = client;
+      // Make sure in memory copy is flushed to disk
+      if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem");
+      }*/
+
+      switch(message.msgId) {
+        case BEGIN_TX:
+          if (begin(txlog, message, client) < 0) {
+            // TODO error?
+          };
+          break;
+        case JOIN_TX:
+          if (join(txlog, message, client) < 0) {
+            // TODO error?
+          };
+          break;
+        case COMMIT_TX:
+          if (commit(txlog, message, client) < 0) {
+            // TODO error?
+          };
+          break;
+        case COMMIT_CRASH_TX:
+          if (commit_crash(txlog, message, client) < 0) {
+            // TODO error?
+          };
+          break;
+        case PREPARE_TX:
+          if (prepare(txlog, message, client) < 0) {
+            // TODO error?
+          };
+          break;
+        case ABORT_TX:
+          if (abort(txlog, message, client) < 0) {
+            // TODO error?
+          };
+          break;
+        case ABORT_CRASH_TX:
+          if (abort_crash(txlog, message, client) < 0) {
+            // TODO error?
+          };
+          break;
+        default:
+          break;
+      }
+
+      // TODO check for timed out votes
+    }
+  }
+  /*
+  for (i = 0;; i = (++i % MAX_WORKERS)) {
+    struct msgType message;
+    message.msgId = 0;
+
+    socklen_t len;
+    struct sockaddr_in client;
+    memset(&client, 0, sizeof(client));
+
+    int size = recvfrom(sockfd, &message, sizeof(message), 0, (struct sockaddr *) &client, &len);
+
+    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
       perror("Receiving error:");
       abort();
+    } else if (n >= 0) {
+      printf("Got a packet\n");
+      txlog->transaction[i].worker[0] = client;
+      // Make sure in memory copy is flushed to disk
+      if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem");
+      }
     }
-    printf("Got a packet\n");
-    txlog->transaction[i].worker[0] = client;
-    // Make sure in memory copy is flushed to disk
-    if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
-      perror("Msync problem");
-    }
-    
   }
+   */
 
   sleep(1000);
 
