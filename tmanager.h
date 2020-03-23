@@ -15,6 +15,8 @@ struct tx {
   unsigned long txID;
   enum txState tstate;
   struct  sockaddr_in worker[MAX_WORKERS];
+  int voteTime;
+  int voteState[MAX_WORKERS]; // 0 default, 1 if prepared
 };
 
 

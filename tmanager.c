@@ -133,7 +133,7 @@ int main(int argc, char ** argv) {
     msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE); 
   }
 
-  // TODO recovery 
+  // TODO recovery
   
   printf("Starting up Transaction Manager on %d\n", port);
   printf("Port number:              %d\n", port);
@@ -167,37 +167,37 @@ int main(int argc, char ** argv) {
 
       switch(message.msgId) {
         case BEGIN_TX:
-          if (begin(txlog, message, client) < 0) {
+          if (begin(sockfd, txlog, message, client) < 0) {
             // TODO error?
           };
           break;
         case JOIN_TX:
-          if (join(txlog, message, client) < 0) {
+          if (join(sockfd, txlog, message, client) < 0) {
             // TODO error?
           };
           break;
         case COMMIT_TX:
-          if (commit(txlog, message, client) < 0) {
+          if (commit(sockfd, txlog, message, client) < 0) {
             // TODO error?
           };
           break;
         case COMMIT_CRASH_TX:
-          if (commit_crash(txlog, message, client) < 0) {
+          if (commit_crash(sockfd, txlog, message, client) < 0) {
             // TODO error?
           };
           break;
         case PREPARE_TX:
-          if (prepare(txlog, message, client) < 0) {
+          if (prepare(sockfd, txlog, message, client) < 0) {
             // TODO error?
           };
           break;
         case ABORT_TX:
-          if (abort(txlog, message, client) < 0) {
+          if (abort(sockfd, txlog, message, client) < 0) {
             // TODO error?
           };
           break;
         case ABORT_CRASH_TX:
-          if (abort_crash(txlog, message, client) < 0) {
+          if (abort_crash(sockfd, txlog, message, client) < 0) {
             // TODO error?
           };
           break;

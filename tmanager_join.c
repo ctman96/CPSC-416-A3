@@ -3,8 +3,11 @@
 //
 // Handler code for Join
 //
+#include "tmanager.h"
+#include "transaction_msg.h"
+#include "tmanager_send_message.h"
 
-int join(struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
+int join(int sockfd, struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
     // Check valid request (TID exists)
     int t = -1;
     for (int i = 0; i < MAX_TX; i++) {

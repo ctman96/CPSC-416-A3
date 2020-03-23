@@ -7,12 +7,12 @@
 #include "transaction_msg.h"
 #include "tmanager_send_message.h"
 
-int begin(struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
+int begin(int sockfd, struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
     // Check valid request (TID doesn't conflict and can handle it)
     int t = -1;
     int id_conflict = 0;
     for (int i = 0; i < MAX_TX; i++) {
-        if (txlog->transaction[i].tstate == TX_NOTINUSE)
+        if (txlog->transaction[i].tstate == TX_NOTINUSE) // TODO What about TX_COMMITTED or TX_ABORTED
             t = i;
         else if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == message.tid)
             id_conflict = 1;
