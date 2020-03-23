@@ -132,7 +132,8 @@ int main(int argc, char ** argv) {
     // Make sure in memory copy is flushed to disk
     msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE); 
   }
-    
+
+  // TODO recovery 
   
   printf("Starting up Transaction Manager on %d\n", port);
   printf("Port number:              %d\n", port);

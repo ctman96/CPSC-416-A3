@@ -13,8 +13,11 @@ int join(struct transactionSet * txlog, struct txMsgType message, struct sockadd
     }
 
     if (t == -1) {
-        // TODO reply failure
-        return 0;
+        // Reply Failure
+        struct txMsgType reply;
+        reply.msgId = FAILURE_TX;
+        reply.tid = message.tid;
+        return send_message(sockfd, client, &reply);
     }
 
     // Check for space or already existing
@@ -30,14 +33,20 @@ int join(struct transactionSet * txlog, struct txMsgType message, struct sockadd
         }
     }
     if (w == -1) {
-        // TODO reply failure
-        return 0;
+        // Reply Failure
+        struct txMsgType reply;
+        reply.msgId = FAILURE_TX;
+        reply.tid = message.tid;
+        return send_message(sockfd, client, &reply);
     }
     // Add worker to transaction
     txlog->transaction[t].worker[w] = client;
 
-    // TODO Reply Success
-    // TODO Logging
+    // Reply Success
+    struct txMsgType reply;
+    reply.msgId = SUCCESS_TX;
+    reply.tid = message.tid;
+    return send_message(sockfd, client, &reply)
 
-    return 0;
+    // TODO Logging
 }

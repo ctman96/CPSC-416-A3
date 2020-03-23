@@ -5,6 +5,7 @@
 //
 #include "tmanager.h"
 #include "transaction_msg.h"
+#include "tmanager_send_message.h"
 
 int begin(struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
     // Check valid request (TID doesn't conflict and can handle it)
@@ -18,8 +19,11 @@ int begin(struct transactionSet * txlog, struct txMsgType message, struct sockad
     }
 
     if (t == -1 || id_conflict) {
-        // TODO reply failure
-        return 0;
+        // Reply Failure
+        struct txMsgType reply;
+        reply.msgId = FAILURE_TX;
+        reply.tid = message.tid;
+        return send_message(sockfd, client, &reply);
     }
 
     // Begin transaction
@@ -30,8 +34,11 @@ int begin(struct transactionSet * txlog, struct txMsgType message, struct sockad
     txlog->transaction[t].worker[0] = client;
     txlog->transaction[t].tstate = TX_INPROGRESS;
 
-    // TODO Reply Success
-    // TODO Logging
+    // Reply Success
+    struct txMsgType reply;
+    reply.msgId = SUCCESS_TX;
+    reply.tid = message.tid;
+    return send_message(sockfd, client, &reply);
 
-    return 0;
+    // TODO Logging
 }

@@ -13,12 +13,13 @@ enum txMsgKind {
     PREPARE_TX,
     ABORT_TX,
     ABORT_CRASH_TX,
+    SUCCESS_TX,
+    FAILURE_TX,
 };
 
 typedef struct  {
     uint32_t   msgID;
     uint32_t   tid;        // Transaction ID
-    uint32_t   port;
 } txMsgType;
 
 #endif //A3_TRANSACTION_MSG_H
