@@ -31,9 +31,9 @@ file. If working in pairs both of you must do this.
 
 
 STUDENT  1
-Name :
-St. No:
-Email:
+Name : Cody Newman
+St. No: 35833145
+Email: ctman96@gmail.com
 
 
 STUDENT  2
