@@ -1,26 +1,6 @@
 #define _POSIX_C_SOURCE 1
-#include <stdio.h> 
-#include <stdlib.h> 
-#include <unistd.h> 
-#include <string.h> 
-#include <sys/types.h> 
-#include <sys/socket.h> 
-#include <arpa/inet.h> 
-#include <netinet/in.h> 
-#include <errno.h>
-#include <time.h>
-#include <netdb.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include "tmanager.h"
-#include <sys/mman.h>
-#include <strings.h>
-#include <errno.h>
 
-#include "transaction_msg.h"
-#include "tmanager_begin.c"
-#include "tmanager_join.c"
-#include "tmanager_commit.c""
+#include "tmanager.h"
 
 void usage(char * cmd) {
   printf("usage: %s  portNum\n",
@@ -60,9 +40,9 @@ int main(int argc, char ** argv) {
   }
 
   // Set socket as non-blocking
-  int flags = fcntl(properties.sockfd, F_GETFL);
+  int flags = fcntl(sockfd, F_GETFL);
   flags |= O_NONBLOCK;
-  fcntl(properties.sockfd, F_SETFL, flags);
+  fcntl(sockfd, F_SETFL, flags);
 
   // Setup my server information 
   memset(&servAddr, 0, sizeof(servAddr)); 
@@ -141,11 +121,11 @@ int main(int argc, char ** argv) {
 
   int i;
   unsigned char buff[1024];
+  txMsgType message;
 
   int running = 1;
   while (running) {
-    struct txMsgType message;
-    message.msgId = 0;
+    message.msgID = 0;
 
     socklen_t len;
     struct sockaddr_in client;
@@ -158,39 +138,39 @@ int main(int argc, char ** argv) {
       running = 0;
       abort();
     } else if (size >= 0) {
-      switch(message.msgId) {
+      switch(message.msgID) {
         case BEGIN_TX:
-          if (begin(sockfd, txlog, message.tid, client) < 0) {
+          if (tm_begin(sockfd, txlog, message.tid, client) < 0) {
             // TODO error?
           };
           break;
         case JOIN_TX:
-          if (join(sockfd, txlog, message.tid, client) < 0) {
+          if (tm_join(sockfd, txlog, message.tid, client) < 0) {
             // TODO error?
           };
           break;
         case COMMIT_TX:
-          if (commit(sockfd, txlog, message.tid, client) < 0) {
+          if (tm_commit(sockfd, txlog, message.tid, client, 0) < 0) {
             // TODO error?
           };
           break;
         case COMMIT_CRASH_TX:
-          if (commit(sockfd, txlog, message.tid, client, 1) < 0) {
+          if (tm_commit(sockfd, txlog, message.tid, client, 1) < 0) {
             // TODO error?
           };
           break;
         case PREPARE_TX:
-          if (prepare(sockfd, txlog, message.tid, client) < 0) {
+          if (tm_prepared(sockfd, txlog, message.tid, client) < 0) {
             // TODO error?
           };
           break;
         case ABORT_TX:
-          if (abort(sockfd, txlog, message.tid, client) < 0) {
+          if (tm_abort(sockfd, txlog, message.tid, client, 0) < 0) {
             // TODO error?
           };
           break;
         case ABORT_CRASH_TX:
-          if (abort(sockfd, txlog, message.tid, client, 1) < 0) {
+          if (tm_abort(sockfd, txlog, message.tid, client, 1) < 0) {
             // TODO error?
           };
           break;
@@ -203,7 +183,7 @@ int main(int argc, char ** argv) {
       for (int i = 0; i < MAX_TX; i++) {
         if (txlog->transaction[i].tstate == TX_VOTING &&
             time(NULL) - txlog->transaction[i].voteTime >  10) {
-          if (abort(sockfd, txlog, txlog->transaction[i].txID, client) < 0) {
+          if (tm_abort(sockfd, txlog, txlog->transaction[i].txID, client, txlog->transaction[i].crash) < 0) {
             // TODO error
           }
         }

@@ -2,13 +2,13 @@
 // Created by Cody on 3/23/2020.
 //
 
-#include "tmanager_send_message.h"
+#include "tmanager.h"
 
-int send_message(int sockfd, struct sockaddr_in client, struct txMsgType* message) {
+int send_message(int sockfd, struct sockaddr_in client, txMsgType* message) {
     // TODO logging?
 
     int bytesSent;
-    bytesSent = sendto(sockfd, (void *) message, sizeof(*message), (struct sockaddr *) &client, sizeof(client));
+    bytesSent = sendto(sockfd, (void *) message, sizeof(*message), 0, (struct sockaddr *) &client, sizeof(client));
     if (bytesSent != sizeof(*message)) {
         // TODO Error
         return -1;

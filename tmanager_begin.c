@@ -4,10 +4,8 @@
 // Handler code for Begin
 //
 #include "tmanager.h"
-#include "transaction_msg.h"
-#include "tmanager_send_message.h"
 
-int begin(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client) {
+int tm_begin(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client) {
     // Check valid request (TID doesn't conflict and can handle it)
     int t = -1;
     int id_conflict = 0;
@@ -20,8 +18,8 @@ int begin(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockad
 
     if (t == -1 || id_conflict) {
         // Reply Failure
-        struct txMsgType reply;
-        reply.msgId = FAILURE_TX;
+        txMsgType reply;
+        reply.msgID = FAILURE_TX;
         reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
@@ -39,8 +37,8 @@ int begin(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockad
     }
 
     // Reply Success
-    struct txMsgType reply;
-    reply.msgId = SUCCESS_TX;
+    txMsgType reply;
+    reply.msgID = SUCCESS_TX;
     reply.tid = tid;
     return send_message(sockfd, client, &reply);
 

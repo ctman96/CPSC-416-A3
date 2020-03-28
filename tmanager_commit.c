@@ -4,10 +4,8 @@
 // Handler code for committing / voting
 //
 #include "tmanager.h"
-#include "transaction_msg.h"
-#include "tmanager_send_message.h"
 
-int commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client) {
+int tm_commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client, int crash) {
     // Check valid request (TID exists)
     int t = -1;
     for (int i = 0; i < MAX_TX; i++) {
@@ -15,10 +13,10 @@ int commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct socka
             t = i;
     }
 
-    if (t == -1 || txlog->transaction[i].tstate != TX_INPROGRESS) {
+    if (t == -1 || txlog->transaction[t].tstate != TX_INPROGRESS) {
         // Reply Failure?
-        struct txMsgType reply;
-        reply.msgId = FAILURE_TX;
+        txMsgType reply;
+        reply.msgID = FAILURE_TX;
         reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
@@ -26,6 +24,7 @@ int commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct socka
     // Initialize vote
     txlog->transaction[t].tstate = TX_VOTING;
     txlog->transaction[t].voteTime = time(NULL);
+    txlog->transaction[t].crash = crash;
     if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
         perror("Msync problem");
         // TODO
@@ -35,8 +34,8 @@ int commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct socka
     for (int i = 0; i < MAX_WORKERS; i++) {
         txlog->transaction[t].voteState[i] = 0;
         if (txlog->transaction[t].worker[i].sin_port != 0) {
-            struct txMsgType ptc;
-            ptc.msgId = PREPARE_TX;
+            txMsgType ptc;
+            ptc.msgID = PREPARE_TX;
             ptc.tid = tid;
             if (send_message(sockfd, client, &ptc) < 0) {
                 // TODO Error?
@@ -49,7 +48,7 @@ int commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct socka
 }
 
 
-int prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client, int crash = 0) {
+int tm_prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client) {
     // Check valid request (TID exists)
     int t = -1;
     for (int i = 0; i < MAX_TX; i++) {
@@ -57,10 +56,10 @@ int prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct soc
             t = i;
     }
 
-    if (t == -1 || txlog->transaction[i].tstate != TX_VOTING) {
+    if (t == -1 || txlog->transaction[t].tstate != TX_VOTING) {
         // Reply Failure?
-        struct txMsgType reply;
-        reply.msgId = FAILURE_TX;
+        txMsgType reply;
+        reply.msgID = FAILURE_TX;
         reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
@@ -88,15 +87,17 @@ int prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct soc
         // TODO
     }
 
-    // Crash
-    if (crash) _exit(EXIT_SUCCESS);
+    // Crash if was told to
+    if (txlog->transaction[t].crash) {
+        _exit(EXIT_SUCCESS);
+    }
 
     // Send Committed to all workers
     for (int i = 0; i < MAX_WORKERS; i++) {
         txlog->transaction[t].voteState[i] = 0;
         if (txlog->transaction[t].worker[i].sin_port != 0) {
-            struct txMsgType cmt;
-            cmt.msgId = COMMIT_TX;
+            txMsgType cmt;
+            cmt.msgID = COMMIT_TX;
             cmt.tid = tid;
             if (send_message(sockfd, client, &cmt) < 0) {
                 // TODO Error?
@@ -109,7 +110,7 @@ int prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct soc
 }
 
 
-int abort(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client, int crash = 0) {
+int tm_abort(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client, int crash) {
     // Check valid request (TID exists)
     int t = -1;
     for (int i = 0; i < MAX_TX; i++) {
@@ -117,10 +118,10 @@ int abort(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockad
             t = i;
     }
 
-    if (t == -1 || txlog->transaction[i].tstate != TX_VOTING) { // TODO what states should this be accepted?
+    if (t == -1 || txlog->transaction[t].tstate != TX_VOTING) { // TODO what states should this be accepted?
         // Reply Failure?
-        struct txMsgType reply;
-        reply.msgId = FAILURE_TX;
+        txMsgType reply;
+        reply.msgID = FAILURE_TX;
         reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
@@ -138,8 +139,8 @@ int abort(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockad
     for (int i = 0; i < MAX_WORKERS; i++) {
         txlog->transaction[t].voteState[i] = 0;
         if (txlog->transaction[t].worker[i].sin_port != 0) {
-            struct txMsgType abt;
-            abt.msgId = ABORT_TX;
+            txMsgType abt;
+            abt.msgID = ABORT_TX;
             abt.tid = tid;
             if (send_message(sockfd, client, &abt) < 0) {
                 // TODO Error?

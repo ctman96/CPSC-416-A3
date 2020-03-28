@@ -4,10 +4,8 @@
 // Handler code for Join
 //
 #include "tmanager.h"
-#include "transaction_msg.h"
-#include "tmanager_send_message.h"
 
-int join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client) {
+int tm_join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client) {
     // Check valid request (TID exists)
     int t = -1;
     for (int i = 0; i < MAX_TX; i++) {
@@ -17,8 +15,8 @@ int join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockadd
 
     if (t == -1) {
         // Reply Failure
-        struct txMsgType reply;
-        reply.msgId = FAILURE_TX;
+        txMsgType reply;
+        reply.msgID = FAILURE_TX;
         reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
@@ -37,8 +35,8 @@ int join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockadd
     }
     if (w == -1) {
         // Reply Failure
-        struct txMsgType reply;
-        reply.msgId = FAILURE_TX;
+        txMsgType reply;
+        reply.msgID = FAILURE_TX;
         reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
@@ -50,8 +48,8 @@ int join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockadd
     }
 
     // Reply Success
-    struct txMsgType reply;
-    reply.msgId = SUCCESS_TX;
+    txMsgType reply;
+    reply.msgID = SUCCESS_TX;
     reply.tid = tid;
     return send_message(sockfd, client, &reply);
 

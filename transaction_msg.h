@@ -4,8 +4,9 @@
 
 #ifndef A3_TRANSACTION_MSG_H
 #define A3_TRANSACTION_MSG_H
+#include <stdint.h>
 
-enum txMsgKind {
+typedef enum {
     BEGIN_TX = 2000,
     JOIN_TX,
     COMMIT_TX,
@@ -15,7 +16,7 @@ enum txMsgKind {
     ABORT_CRASH_TX,
     SUCCESS_TX,
     FAILURE_TX,
-};
+} txMsgKind;
 
 typedef struct  {
     uint32_t   msgID;
