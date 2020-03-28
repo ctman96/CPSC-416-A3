@@ -34,12 +34,15 @@ int main(int argc, char ** argv) {
     return -1;
   }
 
+  // port to listen on for commands
    char * end;
    cmdPort = strtoul(argv[1], &end, 10);
    if (argv[1] == end) {
      printf("Command port conversion error\n");
      exit(-1);
    }
+
+  // manager port
    txPort = strtoul(argv[2], &end, 10);
    if (argv[2] == end) {
      printf("Transaction port conversion error\n");
@@ -101,11 +104,130 @@ int main(int argc, char ** argv) {
      perror("Msync problem");
    }
    
-   
+    printf("Worker Start")
     printf("Command port:  %d\n", cmdPort);
     printf("TX port:       %d\n", txPort);
     printf("Log file name: %s\n", logFileName);
   // Some demo data
    strncpy(log->log.newIDstring, "1234567890123456789012345678901234567890", IDLEN);
+
+
+  // Actual worker code
+  // -------------------------------------------------------------
+
+  // create two different sockets, one for cmd and one for txmanager
+  int sockfdCmd;
+  struct sockaddr_in servAddrCmd;
+
+  int sockfdTx;
+  struct sockaddr_in servAddrTx;
+
+  if ( (sockfdCmd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
+    perror("socket creation failed"); 
+    exit(-1); 
+  }
+
+  if ( (sockfdTx = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
+    perror("socket creation failed"); 
+    exit(-1); 
+  }
+
+  // Set sockets as non-blocking
+  int flags = fcntl(properties.sockfdCmd, F_GETFL);
+  flags |= O_NONBLOCK;
+  fcntl(properties.sockfdCmd, F_SETFL, flags);
+
+  int flags = fcntl(properties.sockfdTx, F_GETFL);
+  flags |= O_NONBLOCK;
+  fcntl(properties.sockfdTx, F_SETFL, flags);
+
+  // Setup my server information 
+  memset(&servAddr, 0, sizeof(servAddr)); 
+  servAddr.sin_family = AF_INET; 
+  servAddr.sin_port = htons(port);
+  // Accept on any of the machine's IP addresses.
+  servAddr.sin_addr.s_addr = INADDR_ANY;
+
+  // Bind the sockets to the requested addresses and ports
+  if ( bind(sockfdCmd, (const struct sockaddr *)&servAddr,  
+            sizeof(servAddr)) < 0 )  { 
+    perror("bind failed"); 
+    exit(-1); 
+  }
+
+  if ( bind(sockfdTx, (const struct sockaddr *)&servAddr,  
+            sizeof(servAddr)) < 0 )  { 
+    perror("bind failed"); 
+    exit(-1); 
+  }
+
+
+  int running = 1;
+  while (running) {
+    // check for messages
+    // switch on recieved message id
+    // send msgs or edit data depending on msg
+    // ---------------------------------------------------
+    // TODO:
+    // All of the switch statements
+    // add section for txmanager socket
+
+    // check for commands
+    struct txMsgType message;
+    message.msgId = 0;
+
+    socklen_t len;
+    struct sockaddr_in client;
+    memset(&client, 0, sizeof(client));
+
+    int size = recvfrom(sockfdCmd, &message, sizeof(message), 0, (struct sockaddr *) &client, &len);
+    
+    // should 'n' be size? where is n declared?
+    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+      perror("Receiving error:");
+      running = 0;
+      abort();
+    } else if (n >= 0) {
+      printf("Got a command packet\n");
   
+    switch (message.msgId) {
+      case BEGINTX:
+      // send a begin transaction message to manager (with txid TID). Read docs for errors
+      
+        break;
+      case JOINTX:
+      // send a join transaction msg to txmanager to join tx TID. 
+        break;
+      case NEW_A:
+      // if a transaction not underway, update A. else, update log and then update data
+      // if in not active state, then not in tx, so edit A or B directly
+      // if in anything but not active state, then in transaction so log 
+        break;
+      case NEW_B:
+      // if a transaction not underway, update B. else, update log and then update data
+        break;
+      case NEW_IDSTR:
+      // same as above
+        break;
+      case DELAY_RESPONSE:
+        break;
+      case CRASH:
+        break;
+      case COMMIT:
+        break;
+      case COMMIT_CRASH:
+        break;
+      case ABORT:
+        break;
+      case ABORT_CRASH:
+        break;
+      case VOTE_ABORT:
+        break;
+
+      default:
+        // No valid msgID
+        break;
+    }
+
+  }
 }
