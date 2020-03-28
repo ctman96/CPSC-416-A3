@@ -7,11 +7,11 @@
 #include "transaction_msg.h"
 #include "tmanager_send_message.h"
 
-int join(int sockfd, struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
+int join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client) {
     // Check valid request (TID exists)
     int t = -1;
     for (int i = 0; i < MAX_TX; i++) {
-        if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == message.tid)
+        if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == tid)
             t = i;
     }
 
@@ -19,12 +19,12 @@ int join(int sockfd, struct transactionSet * txlog, struct txMsgType message, st
         // Reply Failure
         struct txMsgType reply;
         reply.msgId = FAILURE_TX;
-        reply.tid = message.tid;
+        reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
 
     // Check for space or already existing
-    txlog->transaction[t].txID = message.tid;
+    txlog->transaction[t].txID = tid;
     int w = -1;
     for (int i = 0; i < MAX_WORKERS; i++) {
         if (txlog->transaction[t].worker[i].sin_port == 0) { // Treat port 0 default/unassigned
@@ -39,17 +39,21 @@ int join(int sockfd, struct transactionSet * txlog, struct txMsgType message, st
         // Reply Failure
         struct txMsgType reply;
         reply.msgId = FAILURE_TX;
-        reply.tid = message.tid;
+        reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
     // Add worker to transaction
     txlog->transaction[t].worker[w] = client;
+    if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem");
+        // TODO
+    }
 
     // Reply Success
     struct txMsgType reply;
     reply.msgId = SUCCESS_TX;
-    reply.tid = message.tid;
-    return send_message(sockfd, client, &reply)
+    reply.tid = tid;
+    return send_message(sockfd, client, &reply);
 
     // TODO Logging
 }

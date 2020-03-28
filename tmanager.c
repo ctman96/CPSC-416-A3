@@ -153,85 +153,64 @@ int main(int argc, char ** argv) {
 
     int size = recvfrom(sockfd, &message, sizeof(message), 0, (struct sockaddr *) &client, &len);
 
-    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+    if (size < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
       perror("Receiving error:");
       running = 0;
       abort();
-    } else if (n >= 0) {
-      printf("Got a packet\n");
-      /*txlog->transaction[i].worker[0] = client;
-      // Make sure in memory copy is flushed to disk
-      if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
-        perror("Msync problem");
-      }*/
-
+    } else if (size >= 0) {
       switch(message.msgId) {
         case BEGIN_TX:
-          if (begin(sockfd, txlog, message, client) < 0) {
+          if (begin(sockfd, txlog, message.tid, client) < 0) {
             // TODO error?
           };
           break;
         case JOIN_TX:
-          if (join(sockfd, txlog, message, client) < 0) {
+          if (join(sockfd, txlog, message.tid, client) < 0) {
             // TODO error?
           };
           break;
         case COMMIT_TX:
-          if (commit(sockfd, txlog, message, client) < 0) {
+          if (commit(sockfd, txlog, message.tid, client) < 0) {
             // TODO error?
           };
           break;
         case COMMIT_CRASH_TX:
-          if (commit_crash(sockfd, txlog, message, client) < 0) {
+          if (commit(sockfd, txlog, message.tid, client, 1) < 0) {
             // TODO error?
           };
           break;
         case PREPARE_TX:
-          if (prepare(sockfd, txlog, message, client) < 0) {
+          if (prepare(sockfd, txlog, message.tid, client) < 0) {
             // TODO error?
           };
           break;
         case ABORT_TX:
-          if (abort(sockfd, txlog, message, client) < 0) {
+          if (abort(sockfd, txlog, message.tid, client) < 0) {
             // TODO error?
           };
           break;
         case ABORT_CRASH_TX:
-          if (abort_crash(sockfd, txlog, message, client) < 0) {
+          if (abort(sockfd, txlog, message.tid, client, 1) < 0) {
             // TODO error?
           };
           break;
+        // TODO: Status polling?
         default:
           break;
       }
 
-      // TODO check for timed out votes
-    }
-  }
-  /*
-  for (i = 0;; i = (++i % MAX_WORKERS)) {
-    struct msgType message;
-    message.msgId = 0;
-
-    socklen_t len;
-    struct sockaddr_in client;
-    memset(&client, 0, sizeof(client));
-
-    int size = recvfrom(sockfd, &message, sizeof(message), 0, (struct sockaddr *) &client, &len);
-
-    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-      perror("Receiving error:");
-      abort();
-    } else if (n >= 0) {
-      printf("Got a packet\n");
-      txlog->transaction[i].worker[0] = client;
-      // Make sure in memory copy is flushed to disk
-      if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
-        perror("Msync problem");
+      // Check for timed out votes
+      for (int i = 0; i < MAX_TX; i++) {
+        if (txlog->transaction[i].tstate == TX_VOTING &&
+            time(NULL) - txlog->transaction[i].voteTime >  10) {
+          if (abort(sockfd, txlog, txlog->transaction[i].txID, client) < 0) {
+            // TODO error
+          }
+        }
       }
+
     }
   }
-   */
 
   sleep(1000);
 

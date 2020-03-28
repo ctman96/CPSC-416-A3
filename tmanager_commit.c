@@ -7,11 +7,11 @@
 #include "transaction_msg.h"
 #include "tmanager_send_message.h"
 
-int commit(int sockfd, struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
+int commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client) {
     // Check valid request (TID exists)
     int t = -1;
     for (int i = 0; i < MAX_TX; i++) {
-        if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == message.tid)
+        if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == tid)
             t = i;
     }
 
@@ -19,13 +19,17 @@ int commit(int sockfd, struct transactionSet * txlog, struct txMsgType message, 
         // Reply Failure?
         struct txMsgType reply;
         reply.msgId = FAILURE_TX;
-        reply.tid = message.tid;
+        reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
 
     // Initialize vote
     txlog->transaction[t].tstate = TX_VOTING;
     txlog->transaction[t].voteTime = time(NULL);
+    if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem");
+        // TODO
+    }
 
     // Send prepareToCommit to all workers
     for (int i = 0; i < MAX_WORKERS; i++) {
@@ -33,7 +37,7 @@ int commit(int sockfd, struct transactionSet * txlog, struct txMsgType message, 
         if (txlog->transaction[t].worker[i].sin_port != 0) {
             struct txMsgType ptc;
             ptc.msgId = PREPARE_TX;
-            ptc.tid = message.tid;
+            ptc.tid = tid;
             if (send_message(sockfd, client, &ptc) < 0) {
                 // TODO Error?
                 return -1;
@@ -44,16 +48,12 @@ int commit(int sockfd, struct transactionSet * txlog, struct txMsgType message, 
     return 0;
 }
 
-int commit_crash(int sockfd, struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
-    // TODO
-}
 
-
-int prepared(int sockfd, struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
+int prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client, int crash = 0) {
     // Check valid request (TID exists)
     int t = -1;
     for (int i = 0; i < MAX_TX; i++) {
-        if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == message.tid)
+        if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == tid)
             t = i;
     }
 
@@ -61,7 +61,7 @@ int prepared(int sockfd, struct transactionSet * txlog, struct txMsgType message
         // Reply Failure?
         struct txMsgType reply;
         reply.msgId = FAILURE_TX;
-        reply.tid = message.tid;
+        reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
 
@@ -83,6 +83,13 @@ int prepared(int sockfd, struct transactionSet * txlog, struct txMsgType message
 
     // Commit
     txlog->transaction[t].tstate = TX_COMMITTED;
+    if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem");
+        // TODO
+    }
+
+    // Crash
+    if (crash) _exit(EXIT_SUCCESS);
 
     // Send Committed to all workers
     for (int i = 0; i < MAX_WORKERS; i++) {
@@ -90,7 +97,7 @@ int prepared(int sockfd, struct transactionSet * txlog, struct txMsgType message
         if (txlog->transaction[t].worker[i].sin_port != 0) {
             struct txMsgType cmt;
             cmt.msgId = COMMIT_TX;
-            cmt.tid = message.tid;
+            cmt.tid = tid;
             if (send_message(sockfd, client, &cmt) < 0) {
                 // TODO Error?
                 return -1;
@@ -102,11 +109,11 @@ int prepared(int sockfd, struct transactionSet * txlog, struct txMsgType message
 }
 
 
-int abort(int sockfd, struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
+int abort(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client, int crash = 0) {
     // Check valid request (TID exists)
     int t = -1;
     for (int i = 0; i < MAX_TX; i++) {
-        if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == message.tid)
+        if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == tid)
             t = i;
     }
 
@@ -114,12 +121,18 @@ int abort(int sockfd, struct transactionSet * txlog, struct txMsgType message, s
         // Reply Failure?
         struct txMsgType reply;
         reply.msgId = FAILURE_TX;
-        reply.tid = message.tid;
+        reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
 
     // Abort
     txlog->transaction[t].tstate = TX_ABORTED;
+    if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem");
+    }
+
+    // Crash
+    if (crash) _exit(EXIT_SUCCESS);
 
     // Send Abort to all workers
     for (int i = 0; i < MAX_WORKERS; i++) {
@@ -127,7 +140,7 @@ int abort(int sockfd, struct transactionSet * txlog, struct txMsgType message, s
         if (txlog->transaction[t].worker[i].sin_port != 0) {
             struct txMsgType abt;
             abt.msgId = ABORT_TX;
-            abt.tid = message.tid;
+            abt.tid = tid;
             if (send_message(sockfd, client, &abt) < 0) {
                 // TODO Error?
                 return -1;
@@ -136,8 +149,4 @@ int abort(int sockfd, struct transactionSet * txlog, struct txMsgType message, s
     }
 
     return 0;
-}
-
-int abort_crash(int sockfd, struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
-    // TODO
 }

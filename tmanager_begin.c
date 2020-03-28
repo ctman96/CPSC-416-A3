@@ -7,14 +7,14 @@
 #include "transaction_msg.h"
 #include "tmanager_send_message.h"
 
-int begin(int sockfd, struct transactionSet * txlog, struct txMsgType message, struct sockaddr_in client) {
+int begin(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client) {
     // Check valid request (TID doesn't conflict and can handle it)
     int t = -1;
     int id_conflict = 0;
     for (int i = 0; i < MAX_TX; i++) {
         if (txlog->transaction[i].tstate == TX_NOTINUSE) // TODO What about TX_COMMITTED or TX_ABORTED
             t = i;
-        else if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == message.tid)
+        else if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == tid)
             id_conflict = 1;
     }
 
@@ -22,22 +22,26 @@ int begin(int sockfd, struct transactionSet * txlog, struct txMsgType message, s
         // Reply Failure
         struct txMsgType reply;
         reply.msgId = FAILURE_TX;
-        reply.tid = message.tid;
+        reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
 
     // Begin transaction
-    txlog->transaction[t].txID = message.tid;
+    txlog->transaction[t].txID = tid;
     for (int i = 0; i < MAX_WORKERS; i++) {
         txlog->transaction[t].worker[i].sin_port = 0; // Treat port 0 default/unassigned
     }
     txlog->transaction[t].worker[0] = client;
     txlog->transaction[t].tstate = TX_INPROGRESS;
+    if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem");
+        // TODO
+    }
 
     // Reply Success
     struct txMsgType reply;
     reply.msgId = SUCCESS_TX;
-    reply.tid = message.tid;
+    reply.tid = tid;
     return send_message(sockfd, client, &reply);
 
     // TODO Logging
