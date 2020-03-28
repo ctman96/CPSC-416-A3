@@ -6,6 +6,11 @@
 #define MAX_NODES 10
 #define IDLEN     64
 
+// bitmasks
+#define A_MASK 1
+#define B_MASK 2
+#define ID_MASK 4
+
 // Feel free to modify anything in this file except the
 // struct transactionData
 

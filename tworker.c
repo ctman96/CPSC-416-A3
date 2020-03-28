@@ -171,6 +171,8 @@ int main(int argc, char ** argv) {
     // TODO:
     // All of the switch statements
     // add section for txmanager socket
+    // Questions:
+    // Do we update the log->log.newA AND log->txDataA whenever we do newA? (same for B)
 
     // check for commands
     struct txMsgType message;
@@ -191,41 +193,111 @@ int main(int argc, char ** argv) {
       printf("Got a command packet\n");
   
     switch (message.msgId) {
+
       case BEGINTX:
+      // TODO
       // send a begin transaction message to manager (with txid TID). Read docs for errors
-      
+      struct txMsgType msg;
+      msg.msgId = BEGIN_TX;
+      msg.tid = message.TID
         break;
+        
       case JOINTX:
+      // TODO
       // send a join transaction msg to txmanager to join tx TID. 
         break;
+
       case NEW_A:
       // if a transaction not underway, update A. else, update log and then update data
       // if in not active state, then not in tx, so edit A or B directly
       // if in anything but not active state, then in transaction so log 
+
+      if (log->log.txState == WTX_NOTACTIVE) {
+        log->txData.A = message.newValue;
+        if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+          perror("Msync problem"); 
+        }
+      } else {
+
+        // check if old A has already been saved, if not, save it and mark oldSaved
+        if ((A_MASK & log->log.oldSaved) != A_MASK) {
+          log->log.oldA = log->txData.A;
+          log->log.oldSaved = log->log.oldSaved | A_MASK;
+          printf("Saved old A\n");\
+        }
+
+        log->txData.A = message.newValue;
+        log->log.newA = message.newValue;
+      }
         break;
+
       case NEW_B:
       // if a transaction not underway, update B. else, update log and then update data
+
+      if (log->log.txState == WTX_NOTACTIVE) {
+        log->txData.B = message.newValue;
+        if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+          perror("Msync problem"); 
+        }
+      } else {
+
+        // check if old A has already been saved, if not, save it and mark oldSaved
+        if ((B_MASK & log->log.oldSaved) != B_MASK) {
+          log->log.oldB = log->txData.B;
+          log->log.oldSaved = log->log.oldSaved | B_MASK;
+          printf("Saved old B\n");\
+        }
+
+        log->txData.B = message.newValue;
+        log->log.newB = message.newValue;
+      }
         break;
+
       case NEW_IDSTR:
-      // same as above
+
+      if (log->log.txState == WTX_NOTACTIVE) {
+        log->txData.A = message.newValue;
+        if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+          perror("Msync problem"); 
+        }
+      } else {
+
+        // check if old A has already been saved, if not, save it and mark oldSaved
+        if ((ID_MASK & log->log.oldSaved) != ID_MASK) {
+          log->log.oldIDstring = log->txData.IDstring;
+          log->log.oldSaved = log->log.oldSaved | ID_MASK;
+          printf("Saved old IDstring\n");\
+        }
+
+        log->txData.IDstring = message.newValue;
+        log->log.newIDstring = message.newValue;
+      }
         break;
+
       case DELAY_RESPONSE:
+      // TODO
         break;
       case CRASH:
+      // TODO
         break;
       case COMMIT:
+      // TODO
         break;
       case COMMIT_CRASH:
+      // TODO
         break;
       case ABORT:
+      // TODO
         break;
       case ABORT_CRASH:
+      // TODO
         break;
       case VOTE_ABORT:
+      // TODO
         break;
 
       default:
-        // No valid msgID
+        // No valid msgID. exit or do nothing?
         break;
     }
 
