@@ -22,7 +22,6 @@ int tm_join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sock
     }
 
     // Check for space or already existing
-    txlog->transaction[t].txID = tid;
     int w = -1;
     for (int i = 0; i < MAX_WORKERS; i++) {
         if (txlog->transaction[t].worker[i].sin_port == 0) { // Treat port 0 default/unassigned

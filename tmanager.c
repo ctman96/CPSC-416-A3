@@ -174,7 +174,11 @@ int main(int argc, char ** argv) {
             // TODO error?
           };
           break;
-        // TODO: Status polling?
+        case POLL_STATE_TX:
+          if (tm_poll(sockfd, txlog, message.tid, client) < 0) {
+            // TODO error?
+          };
+          break;
         default:
           break;
       }

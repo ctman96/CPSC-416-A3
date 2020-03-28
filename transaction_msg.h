@@ -16,11 +16,13 @@ typedef enum {
     ABORT_CRASH_TX,
     SUCCESS_TX,
     FAILURE_TX,
+    POLL_STATE_TX
 } txMsgKind;
 
 typedef struct  {
     uint32_t   msgID;
     uint32_t   tid;        // Transaction ID
+    uint32_t   state;      // State for polling
 } txMsgType;
 
 #endif //A3_TRANSACTION_MSG_H
