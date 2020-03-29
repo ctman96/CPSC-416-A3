@@ -6,6 +6,14 @@
 #define A3_TRANSACTION_MSG_H
 #include <stdint.h>
 
+enum txState {
+    TX_NOTINUSE = 100,
+    TX_INPROGRESS,
+    TX_VOTING,
+    TX_ABORTED,
+    TX_COMMITTED
+};
+
 typedef enum {
     BEGIN_TX = 2000,
     JOIN_TX,

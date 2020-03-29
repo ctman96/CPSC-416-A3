@@ -13,8 +13,11 @@ int tm_join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sock
             t = i;
     }
 
-    if (t == -1) {
-        printf("Transaction %d does not exist, replying failure\n", tid);
+    if (t == -1 || txlog->transaction[t].tstate != TX_INPROGRESS) {
+        if (t == -1)
+            printf("Transaction %d does not exist, replying failure\n", tid);
+        else
+            printf("Transaction %d cannot be joined in current state, replying failure\n", tid);
         // Reply Failure
         txMsgType reply;
         reply.msgID = FAILURE_TX;

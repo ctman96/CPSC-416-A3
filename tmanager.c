@@ -130,16 +130,16 @@ int main(int argc, char ** argv) {
   printf("Log file name:            %s\n", logFileName);
 
   int i;
-  unsigned char buff[1024];
   txMsgType message;
   socklen_t len;
   struct sockaddr_in client;
-  memset(&client, 0, sizeof(client));
 
   int running = 1;
   while (running) {
     message.msgID = 0;
 
+    len = sizeof(client);
+    memset(&client, 0, sizeof(client));
     int size = recvfrom(sockfd, &message, sizeof(message), 0, (struct sockaddr *) &client, &len);
 
     if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
