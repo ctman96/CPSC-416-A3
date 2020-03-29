@@ -31,6 +31,7 @@ int tm_begin(int sockfd, struct transactionSet * txlog, uint32_t tid, struct soc
     }
     txlog->transaction[t].worker[0] = client;
     txlog->transaction[t].tstate = TX_INPROGRESS;
+    txlog->transaction[t].crash = 0;
     if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
         perror("Msync problem");
         // TODO

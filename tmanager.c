@@ -104,16 +104,23 @@ int main(int argc, char ** argv) {
   
   if (! txlog->initialized) {
     int i;
-    for (i = 0; i  < MAX_WORKERS ; i++) {
+    for (i = 0; i  < MAX_TX ; i++) {
       txlog->transaction[i].tstate = TX_NOTINUSE;
     }
 
     txlog->initialized = -1;
     // Make sure in memory copy is flushed to disk
     msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE); 
+  } else {
+    // Recovery
+    for (int i = 0; i < MAX_TX; i++) {
+      // Abort in progress / voting transactions
+      if (txlog->transaction[i].tstate == TX_INPROGRESS ||
+          txlog->transaction[i].tstate == TX_VOTING) {
+        tm_abort_inner(sockfd, txlog, txlog->transaction[i].txID, i, txlog->transaction[i].crash);
+      }
+    }
   }
-
-  // TODO recovery
   
   printf("Starting up Transaction Manager on %d\n", port);
   printf("Port number:              %d\n", port);

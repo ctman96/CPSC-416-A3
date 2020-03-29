@@ -37,7 +37,7 @@ int tm_commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct so
             txMsgType ptc;
             ptc.msgID = PREPARE_TX;
             ptc.tid = tid;
-            if (send_message(sockfd, client, &ptc) < 0) {
+            if (send_message(sockfd, txlog->transaction[t].worker[i], &ptc) < 0) {
                 // TODO Error?
                 return -1;
             }
@@ -99,7 +99,7 @@ int tm_prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct 
             txMsgType cmt;
             cmt.msgID = COMMIT_TX;
             cmt.tid = tid;
-            if (send_message(sockfd, client, &cmt) < 0) {
+            if (send_message(sockfd, txlog->transaction[t].worker[i], &cmt) < 0) {
                 // TODO Error?
                 return -1;
             }
@@ -126,6 +126,10 @@ int tm_abort(int sockfd, struct transactionSet * txlog, uint32_t tid, struct soc
         return send_message(sockfd, client, &reply);
     }
 
+    return tm_abort_inner(sockfd, txlog, tid, t, crash);
+}
+
+int tm_abort_inner(int sockfd, struct transactionSet * txlog, uint32_t tid, int t, int crash) {
     // Abort
     txlog->transaction[t].tstate = TX_ABORTED;
     if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
@@ -142,7 +146,7 @@ int tm_abort(int sockfd, struct transactionSet * txlog, uint32_t tid, struct soc
             txMsgType abt;
             abt.msgID = ABORT_TX;
             abt.tid = tid;
-            if (send_message(sockfd, client, &abt) < 0) {
+            if (send_message(sockfd, txlog->transaction[t].worker[i], &abt) < 0) {
                 // TODO Error?
                 return -1;
             }

@@ -52,6 +52,7 @@ int tm_join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sock
 int tm_commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client, int crash);
 int tm_prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client);
 int tm_abort(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client, int crash);
+int tm_abort_inner(int sockfd, struct transactionSet * txlog, uint32_t tid, int t, int crash);
 int tm_poll(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sockaddr_in client);
 
 #endif
