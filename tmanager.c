@@ -103,6 +103,7 @@ int main(int argc, char ** argv) {
 
   
   if (! txlog->initialized) {
+    printf("Initializing log\n");
     int i;
     for (i = 0; i  < MAX_TX ; i++) {
       txlog->transaction[i].tstate = TX_NOTINUSE;
@@ -112,11 +113,13 @@ int main(int argc, char ** argv) {
     // Make sure in memory copy is flushed to disk
     msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE); 
   } else {
+    printf("Recovering...\n");
     // Recovery
     for (int i = 0; i < MAX_TX; i++) {
       // Abort in progress / voting transactions
       if (txlog->transaction[i].tstate == TX_INPROGRESS ||
           txlog->transaction[i].tstate == TX_VOTING) {
+        printf("Aborting transaction %d\n", txlog->transaction[i].txID);
         tm_abort_inner(sockfd, txlog, txlog->transaction[i].txID, i, txlog->transaction[i].crash);
       }
     }
@@ -145,57 +148,58 @@ int main(int argc, char ** argv) {
       running = 0;
       abort();
     } else if (size >= 0) {
+      int res = 0;
       switch(message.msgID) {
         case BEGIN_TX:
-          if (tm_begin(sockfd, txlog, message.tid, client) < 0) {
-            // TODO error?
-          };
+          printf("Received BEGIN for TID %d from worker %d\n", message.tid, client.sin_port);
+          res = tm_begin(sockfd, txlog, message.tid, client);
           break;
         case JOIN_TX:
-          if (tm_join(sockfd, txlog, message.tid, client) < 0) {
-            // TODO error?
-          };
+          printf("Received JOIN for TID %d from worker %d\n", message.tid, client.sin_port);
+          res = tm_join(sockfd, txlog, message.tid, client);
           break;
         case COMMIT_TX:
-          if (tm_commit(sockfd, txlog, message.tid, client, 0) < 0) {
-            // TODO error?
-          };
+          printf("Received COMMIT for TID %d from worker %d\n", message.tid, client.sin_port);
+          res = tm_commit(sockfd, txlog, message.tid, client, 0);
           break;
         case COMMIT_CRASH_TX:
-          if (tm_commit(sockfd, txlog, message.tid, client, 1) < 0) {
-            // TODO error?
-          };
+          printf("Received COMMIT_CRASH for TID %d from worker %d\n", message.tid, client.sin_port);
+          res = tm_commit(sockfd, txlog, message.tid, client, 1);
           break;
         case PREPARE_TX:
-          if (tm_prepared(sockfd, txlog, message.tid, client) < 0) {
-            // TODO error?
-          };
+          printf("Received PREPARE for TID %d from worker %d\n", message.tid, client.sin_port);
+          res = tm_prepared(sockfd, txlog, message.tid, client);
           break;
         case ABORT_TX:
-          if (tm_abort(sockfd, txlog, message.tid, client, 0) < 0) {
-            // TODO error?
-          };
+          printf("Received ABORT for TID %d from worker %d\n", message.tid, client.sin_port);
+          res = tm_abort(sockfd, txlog, message.tid, client, 0);
           break;
         case ABORT_CRASH_TX:
-          if (tm_abort(sockfd, txlog, message.tid, client, 1) < 0) {
-            // TODO error?
-          };
+          printf("Received ABORT_CRASH for TID %d from worker %d\n", message.tid, client.sin_port);
+          res = tm_abort(sockfd, txlog, message.tid, client, 1);
           break;
         case POLL_STATE_TX:
-          if (tm_poll(sockfd, txlog, message.tid, client) < 0) {
-            // TODO error?
-          };
+          printf("Received POLL_STATE for TID %d from worker %d\n", message.tid, client.sin_port);
+          res = tm_poll(sockfd, txlog, message.tid, client);
           break;
         default:
           break;
+      }
+      if (res < 0) {
+        perror("Error handling message, exiting\n");
+        running = 0;
+        abort();
       }
 
       // Check for timed out votes
       for (int i = 0; i < MAX_TX; i++) {
         if (txlog->transaction[i].tstate == TX_VOTING &&
             time(NULL) - txlog->transaction[i].voteTime >  10) {
+          printf("Transaction %d voting has timed out, Aborting\n", txlog->transaction[i].txID);
           if (tm_abort(sockfd, txlog, txlog->transaction[i].txID, client, txlog->transaction[i].crash) < 0) {
-            // TODO error
+            perror("Error, exiting\n");
+            running = 0;
+            abort();
           }
         }
       }

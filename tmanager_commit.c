@@ -14,6 +14,10 @@ int tm_commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct so
     }
 
     if (t == -1 || txlog->transaction[t].tstate != TX_INPROGRESS) {
+        if (t == -1)
+            printf("Transaction %d does not exist, replying failure\n", tid);
+        else
+            printf("Transaction %d is not INPROGRESS, replying failure\n", tid);
         // Reply Failure?
         txMsgType reply;
         reply.msgID = FAILURE_TX;
@@ -22,12 +26,12 @@ int tm_commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct so
     }
 
     // Initialize vote
+    printf("Beginning voting for Transaction %d\n", tid);
     txlog->transaction[t].tstate = TX_VOTING;
     txlog->transaction[t].voteTime = time(NULL);
     txlog->transaction[t].crash = crash;
     if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
         perror("Msync problem");
-        // TODO
     }
 
     // Send prepareToCommit to all workers
@@ -38,7 +42,6 @@ int tm_commit(int sockfd, struct transactionSet * txlog, uint32_t tid, struct so
             ptc.msgID = PREPARE_TX;
             ptc.tid = tid;
             if (send_message(sockfd, txlog->transaction[t].worker[i], &ptc) < 0) {
-                // TODO Error?
                 return -1;
             }
         }
@@ -57,6 +60,10 @@ int tm_prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct 
     }
 
     if (t == -1 || txlog->transaction[t].tstate != TX_VOTING) {
+        if (t == -1)
+            printf("Transaction %d does not exist, replying failure\n", tid);
+        else
+            printf("Transaction %d is not VOTING, replying failure\n", tid);
         // Reply Failure?
         txMsgType reply;
         reply.msgID = FAILURE_TX;
@@ -65,30 +72,35 @@ int tm_prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct 
     }
 
     // Set worker vote state as prepared
+    printf("Worker %d has voted prepared\n", client.sin_port);
     for (int i = 0; i < MAX_WORKERS; i++) {
         if (txlog->transaction[t].worker[i].sin_port == client.sin_port){
             txlog->transaction[t].voteState[i] = 1;
             break;
         }
+        // This will I guess accept votes from any worker, not just those assigned, but those votes won't actually do anything
+        // Maybe TODO: reply failure if worker isn't part of the transaction
     }
 
     // Stop here if there are still unprepared workers
     for (int i = 0; i < MAX_WORKERS; i++) {
-        if (txlog->transaction[t].worker[i].sin_port != 0){
+        if (txlog->transaction[t].worker[i].sin_port != 0) {
             if (txlog->transaction[t].voteState[i] != 1)
                 return 0;
         }
     }
 
+    printf("Transaction %d has completed voting, Committing\n", tid);
+
     // Commit
     txlog->transaction[t].tstate = TX_COMMITTED;
     if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
         perror("Msync problem");
-        // TODO
     }
 
     // Crash if was told to
     if (txlog->transaction[t].crash) {
+        printf("Transaction %d - Crashing\n", tid);
         _exit(EXIT_SUCCESS);
     }
 
@@ -100,7 +112,6 @@ int tm_prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct 
             cmt.msgID = COMMIT_TX;
             cmt.tid = tid;
             if (send_message(sockfd, txlog->transaction[t].worker[i], &cmt) < 0) {
-                // TODO Error?
                 return -1;
             }
         }
@@ -118,7 +129,11 @@ int tm_abort(int sockfd, struct transactionSet * txlog, uint32_t tid, struct soc
             t = i;
     }
 
-    if (t == -1 || txlog->transaction[t].tstate != TX_VOTING) { // TODO what states should this be accepted?
+    if (t == -1 || txlog->transaction[t].tstate != TX_VOTING || txlog->transaction[t].tstate != TX_INPROGRESS) {
+        if (t == -1)
+            printf("Transaction %d does not exist, replying failure\n", tid);
+        else
+            printf("Transaction %d is not VOTING or INPROGRESS, replying failure\n", tid);
         // Reply Failure?
         txMsgType reply;
         reply.msgID = FAILURE_TX;
@@ -130,6 +145,8 @@ int tm_abort(int sockfd, struct transactionSet * txlog, uint32_t tid, struct soc
 }
 
 int tm_abort_inner(int sockfd, struct transactionSet * txlog, uint32_t tid, int t, int crash) {
+    printf("Aborting Transaction %d\n", tid);
+
     // Abort
     txlog->transaction[t].tstate = TX_ABORTED;
     if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
@@ -137,7 +154,10 @@ int tm_abort_inner(int sockfd, struct transactionSet * txlog, uint32_t tid, int 
     }
 
     // Crash
-    if (crash) _exit(EXIT_SUCCESS);
+    if (crash) {
+        printf("Transaction %d - Crashing\n", tid);
+        _exit(EXIT_SUCCESS);
+    }
 
     // Send Abort to all workers
     for (int i = 0; i < MAX_WORKERS; i++) {
@@ -147,7 +167,6 @@ int tm_abort_inner(int sockfd, struct transactionSet * txlog, uint32_t tid, int 
             abt.msgID = ABORT_TX;
             abt.tid = tid;
             if (send_message(sockfd, txlog->transaction[t].worker[i], &abt) < 0) {
-                // TODO Error?
                 return -1;
             }
         }

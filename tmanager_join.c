@@ -14,6 +14,7 @@ int tm_join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sock
     }
 
     if (t == -1) {
+        printf("Transaction %d does not exist, replying failure\n", tid);
         // Reply Failure
         txMsgType reply;
         reply.msgID = FAILURE_TX;
@@ -28,11 +29,13 @@ int tm_join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sock
             w = i;
         }
         if (txlog->transaction[t].worker[i].sin_port == client.sin_port) {
+            printf("Transaction %d already contains worker %d\n", tid, client.sin_port);
             w = i; // Counting already being joined as success
             break;
         }
     }
     if (w == -1) {
+        printf("Transaction %d has max workers, replying failure\n", tid);
         // Reply Failure
         txMsgType reply;
         reply.msgID = FAILURE_TX;
@@ -40,10 +43,10 @@ int tm_join(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sock
         return send_message(sockfd, client, &reply);
     }
     // Add worker to transaction
+    printf("Adding Worker %d to Transaction %d\n", client.sin_port, tid);
     txlog->transaction[t].worker[w] = client;
     if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
         perror("Msync problem");
-        // TODO
     }
 
     // Reply Success

@@ -13,6 +13,7 @@ int tm_poll(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sock
     }
 
     if (t == -1) {
+        printf("Transaction %d does not exist, replying failure\n", tid);
         // Reply Failure
         txMsgType reply;
         reply.msgID = FAILURE_TX;
