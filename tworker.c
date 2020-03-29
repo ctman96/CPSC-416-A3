@@ -22,6 +22,18 @@ void usage(char * cmd) {
 	 cmd);
 }
 
+// might move this into new file
+int send_message(int sockfd, struct sockaddr_in client, txMsgType* message) {
+    printf("send_message: client: %d, message: (msgId: %d, tid: %d, state: %d)\n", client.sin_port, message->msgID, message->tid, message->state);
+    int bytesSent;
+    bytesSent = sendto(sockfd, (void *) message, sizeof(*message), 0, (struct sockaddr *) &client, sizeof(client));
+    if (bytesSent != sizeof(*message)) {
+        perror("send_message failed!\n");
+        return -1;
+    }
+    return 0;
+}
+
 
 int main(int argc, char ** argv) {
 
@@ -162,6 +174,11 @@ int main(int argc, char ** argv) {
   }
 
 
+  abortFlag = false;
+  txMsgType message;
+  socklen_t len;
+  struct sockaddr_in client;
+
   int running = 1;
   while (running) {
     // check for messages
@@ -171,21 +188,22 @@ int main(int argc, char ** argv) {
     // TODO:
     // All of the switch statements
     // add section for txmanager socket
+    // How do we deal with responses from the manager?
     // Questions:
     // Do we update the log->log.newA AND log->txDataA whenever we do newA? (same for B)
+    // when do we flush the logfile?
+      // to flush the log it, we must also flush the txData; this means that we would be flushing 
+      // data to disk to early. must instead just update log, and not txData UNTIL END OF TX.
+      // confirm above! ^
 
     // check for commands
-    struct txMsgType message;
     message.msgId = 0;
 
-    socklen_t len;
-    struct sockaddr_in client;
+    len = sizeof(client);
     memset(&client, 0, sizeof(client));
+    int size = recvfrom(sockfd, &message, sizeof(message), 0, (struct sockaddr *) &client, &len);
 
-    int size = recvfrom(sockfdCmd, &message, sizeof(message), 0, (struct sockaddr *) &client, &len);
-    
-    // should 'n' be size? where is n declared?
-    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+    if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
       perror("Receiving error:");
       running = 0;
       abort();
@@ -195,16 +213,20 @@ int main(int argc, char ** argv) {
     switch (message.msgId) {
 
       case BEGINTX:
-      // TODO
       // send a begin transaction message to manager (with txid TID). Read docs for errors
+      // if manager returns error (BC id is already in use), worker exits
       struct txMsgType msg;
       msg.msgId = BEGIN_TX;
       msg.tid = message.TID
+      send_message(sockfdCmd, client, msg);
         break;
         
       case JOINTX:
-      // TODO
-      // send a join transaction msg to txmanager to join tx TID. 
+      // send a join transaction msg to txmanager to join tx TID.
+      struct txMsgType msg;
+      msg.msgId = JOIN_TX;
+      msg.tid = message.TID
+      send_message(sockfdCmd, client, msg);
         break;
 
       case NEW_A:
@@ -241,7 +263,7 @@ int main(int argc, char ** argv) {
         }
       } else {
 
-        // check if old A has already been saved, if not, save it and mark oldSaved
+        // check if old B has already been saved, if not, save it and mark oldSaved
         if ((B_MASK & log->log.oldSaved) != B_MASK) {
           log->log.oldB = log->txData.B;
           log->log.oldSaved = log->log.oldSaved | B_MASK;
@@ -262,7 +284,7 @@ int main(int argc, char ** argv) {
         }
       } else {
 
-        // check if old A has already been saved, if not, save it and mark oldSaved
+        // check if old IDstring has already been saved, if not, save it and mark oldSaved
         if ((ID_MASK & log->log.oldSaved) != ID_MASK) {
           log->log.oldIDstring = log->txData.IDstring;
           log->log.oldSaved = log->log.oldSaved | ID_MASK;
@@ -275,25 +297,58 @@ int main(int argc, char ** argv) {
         break;
 
       case DELAY_RESPONSE:
-      // TODO
+      // TODO - more edge cases for this one
+      if (message.delay >= 0) {
+        sleep(message.delay);
+      } else {
+        sleep(abs(message.delay));
+        // need to "perform all the actions required by that decision but crash just after before responding to the the coordinator."?
+        // if need to do additional processing, can set flag and then crash at end of processing
+        _exit();
+      }
         break;
+
       case CRASH:
-      // TODO
+      // simulate crash by calling _exit()
+      _exit();
         break;
+
       case COMMIT:
-      // TODO
+      // send commit message to txmanager
+      struct txMsgType msg;
+      msg.msgId = COMMIT_TX;
+      // TODO - figure out with cody if commented line below is needed, as each worker will only be involved in one transaction
+      // msg.tid = log->log.txID;
+      send_message(sockfdCmd, client, msg);
         break;
+
       case COMMIT_CRASH:
-      // TODO
+      // send commit message to txmanager that also tells manager to crash
+      struct txMsgType msg;
+      msg.msgId = COMMIT_CRASH_TX;
+      // msg.tid = log->log.txID;
+      send_message(sockfdCmd, client, msg);
         break;
+
       case ABORT:
-      // TODO
+      // send abort message to txmanager
+      struct txMsgType msg;
+      msg.msgId = ABORT_TX;
+      // msg.tid = log->log.txID;
+      send_message(sockfdCmd, client, msg);
         break;
+
       case ABORT_CRASH:
-      // TODO
+      // send abort message to txmanager that also tells manager to crash
+      struct txMsgType msg;
+      msg.msgId = ABORT_CRASH_TX;
+      // msg.tid = log->log.txID;
+      send_message(sockfdCmd, client, msg);
         break;
+
       case VOTE_ABORT:
-      // TODO
+      // vote abort when coordinator next sends prepare message
+      abortFlag = true;
         break;
 
       default:
@@ -303,3 +358,5 @@ int main(int argc, char ** argv) {
 
   }
 }
+
+
