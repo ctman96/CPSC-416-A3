@@ -8,8 +8,11 @@ CFLAGS=-g -Werror-implicit-function-declaration -pedantic -std=gnu99
 tworker: tworker.h msg.h tworker.c
 	$(CC) $(CFLAGS) -o tworker tworker.c
 
-tmanager: tmanager.c msg.h
-	$(CC) $(CFLAGS) -o tmanager tmanager.c
+test_tmanager: transaction_msg.h test_tmanager.c
+	$(CC) $(CFLAGS) -o test_tmanager test_tmanager.c
+
+tmanager: transaction_msg.h tmanager.h tmanager.c tmanager_begin.c tmanager_join.c tmanager_commit.c tmanager_send_message.c
+	$(CC) $(CFLAGS) -o tmanager tmanager.c tmanager_begin.c tmanager_join.c tmanager_commit.c tmanager_send_message.c tmanager_poll.c
 
 cmd: cmd.c msg.h
 	$(CC) $(CFLAGS) -o cmd cmd.c
@@ -22,7 +25,7 @@ cleanobjs:
 
 clean:
 	rm -f *.o
-	rm -f tmanager tworker cmd dumpObject
+	rm -f tmanager tworker cmd test_tmanager dumpObject
 
 scrub: cleanlogs cleanobjs clean
 

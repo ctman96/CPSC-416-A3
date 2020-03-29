@@ -1,20 +1,6 @@
 #define _POSIX_C_SOURCE 1
-#include <stdio.h> 
-#include <stdlib.h> 
-#include <unistd.h> 
-#include <string.h> 
-#include <sys/types.h> 
-#include <sys/socket.h> 
-#include <arpa/inet.h> 
-#include <netinet/in.h> 
-#include <errno.h>
-#include <time.h>
-#include <netdb.h>
-#include <sys/stat.h>
-#include <fcntl.h>
+
 #include "tmanager.h"
-#include <sys/mman.h>
-#include <strings.h>
 
 void usage(char * cmd) {
   printf("usage: %s  portNum\n",
@@ -51,7 +37,12 @@ int main(int argc, char ** argv) {
   if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
     perror("socket creation failed"); 
     exit(-1); 
-  } 
+  }
+
+  // Set socket as non-blocking
+  int flags = fcntl(sockfd, F_GETFL);
+  flags |= O_NONBLOCK;
+  fcntl(sockfd, F_SETFL, flags);
 
   // Setup my server information 
   memset(&servAddr, 0, sizeof(servAddr)); 
@@ -112,41 +103,107 @@ int main(int argc, char ** argv) {
 
   
   if (! txlog->initialized) {
+    printf("Initializing log\n");
     int i;
-    for (i = 0; i  < MAX_WORKERS ; i++) {
+    for (i = 0; i  < MAX_TX ; i++) {
       txlog->transaction[i].tstate = TX_NOTINUSE;
     }
 
     txlog->initialized = -1;
     // Make sure in memory copy is flushed to disk
     msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE); 
+  } else {
+    printf("Recovering...\n");
+    // Recovery
+    for (int i = 0; i < MAX_TX; i++) {
+      // Abort in progress / voting transactions
+      if (txlog->transaction[i].tstate == TX_INPROGRESS ||
+          txlog->transaction[i].tstate == TX_VOTING) {
+        printf("Aborting transaction %d\n", txlog->transaction[i].txID);
+        tm_abort_inner(sockfd, txlog, txlog->transaction[i].txID, i, txlog->transaction[i].crash);
+      }
+    }
   }
-    
   
   printf("Starting up Transaction Manager on %d\n", port);
   printf("Port number:              %d\n", port);
   printf("Log file name:            %s\n", logFileName);
 
-  int n;
   int i;
-  unsigned char buff[1024];
-  for (i = 0;; i = (++i % MAX_WORKERS)) {
-    struct sockaddr_in client;
-    socklen_t len;
-    bzero(&client, sizeof(client));
-    n = recvfrom(sockfd, buff, sizeof(buff), MSG_WAITALL,
-		 (struct sockaddr *) &client, &len);
-    if (n < 0) {
+  txMsgType message;
+  socklen_t len;
+  struct sockaddr_in client;
+
+  int running = 1;
+  while (running) {
+    message.msgID = 0;
+
+    len = sizeof(client);
+    memset(&client, 0, sizeof(client));
+    int size = recvfrom(sockfd, &message, sizeof(message), 0, (struct sockaddr *) &client, &len);
+
+    if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
       perror("Receiving error:");
+      running = 0;
       abort();
+    } else if (size >= 0) {
+      int res = 0;
+      switch(message.msgID) {
+        case BEGIN_TX:
+          printf("Received BEGIN for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
+          res = tm_begin(sockfd, txlog, message.tid, client);
+          break;
+        case JOIN_TX:
+          printf("Received JOIN for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
+          res = tm_join(sockfd, txlog, message.tid, client);
+          break;
+        case COMMIT_TX:
+          printf("Received COMMIT for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
+          res = tm_commit(sockfd, txlog, message.tid, client, 0);
+          break;
+        case COMMIT_CRASH_TX:
+          printf("Received COMMIT_CRASH for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
+          res = tm_commit(sockfd, txlog, message.tid, client, 1);
+          break;
+        case PREPARE_TX:
+          printf("Received PREPARE for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
+          res = tm_prepared(sockfd, txlog, message.tid, client);
+          break;
+        case ABORT_TX:
+          printf("Received ABORT for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
+          res = tm_abort(sockfd, txlog, message.tid, client, 0);
+          break;
+        case ABORT_CRASH_TX:
+          printf("Received ABORT_CRASH for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
+          res = tm_abort(sockfd, txlog, message.tid, client, 1);
+          break;
+        case POLL_STATE_TX:
+          printf("Received POLL_STATE for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
+          res = tm_poll(sockfd, txlog, message.tid, client);
+          break;
+        default:
+          break;
+      }
+      if (res < 0) {
+        perror("Error handling message, exiting\n");
+        running = 0;
+        abort();
+      }
+
+      // Check for timed out votes
+      for (int i = 0; i < MAX_TX; i++) {
+        if (txlog->transaction[i].tstate == TX_VOTING &&
+            time(NULL) - txlog->transaction[i].voteTime >  10) {
+          printf("Transaction %d voting has timed out, Aborting\n", txlog->transaction[i].txID);
+          if (tm_abort(sockfd, txlog, txlog->transaction[i].txID, client, txlog->transaction[i].crash) < 0) {
+            perror("Error, exiting\n");
+            running = 0;
+            abort();
+          }
+        }
+      }
+
     }
-    printf("Got a packet\n");
-    txlog->transaction[i].worker[0] = client;
-    // Make sure in memory copy is flushed to disk
-    if (msync(txlog, sizeof(struct transactionSet), MS_SYNC | MS_INVALIDATE)) {
-      perror("Msync problem");
-    }
-    
   }
 
   sleep(1000);
