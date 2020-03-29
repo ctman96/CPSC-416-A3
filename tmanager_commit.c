@@ -72,7 +72,7 @@ int tm_prepared(int sockfd, struct transactionSet * txlog, uint32_t tid, struct 
     }
 
     // Set worker vote state as prepared
-    printf("Worker %d has voted prepared\n", client.sin_port);
+    printf("Worker %d has voted prepared\n", ntohs(client.sin_port));
     for (int i = 0; i < MAX_WORKERS; i++) {
         if (txlog->transaction[t].worker[i].sin_port == client.sin_port){
             txlog->transaction[t].voteState[i] = 1;

@@ -132,18 +132,17 @@ int main(int argc, char ** argv) {
   int i;
   unsigned char buff[1024];
   txMsgType message;
+  socklen_t len;
+  struct sockaddr_in client;
+  memset(&client, 0, sizeof(client));
 
   int running = 1;
   while (running) {
     message.msgID = 0;
 
-    socklen_t len;
-    struct sockaddr_in client;
-    memset(&client, 0, sizeof(client));
-
     int size = recvfrom(sockfd, &message, sizeof(message), 0, (struct sockaddr *) &client, &len);
 
-    if (size < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+    if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
       perror("Receiving error:");
       running = 0;
       abort();
@@ -151,35 +150,35 @@ int main(int argc, char ** argv) {
       int res = 0;
       switch(message.msgID) {
         case BEGIN_TX:
-          printf("Received BEGIN for TID %d from worker %d\n", message.tid, client.sin_port);
+          printf("Received BEGIN for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
           res = tm_begin(sockfd, txlog, message.tid, client);
           break;
         case JOIN_TX:
-          printf("Received JOIN for TID %d from worker %d\n", message.tid, client.sin_port);
+          printf("Received JOIN for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
           res = tm_join(sockfd, txlog, message.tid, client);
           break;
         case COMMIT_TX:
-          printf("Received COMMIT for TID %d from worker %d\n", message.tid, client.sin_port);
+          printf("Received COMMIT for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
           res = tm_commit(sockfd, txlog, message.tid, client, 0);
           break;
         case COMMIT_CRASH_TX:
-          printf("Received COMMIT_CRASH for TID %d from worker %d\n", message.tid, client.sin_port);
+          printf("Received COMMIT_CRASH for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
           res = tm_commit(sockfd, txlog, message.tid, client, 1);
           break;
         case PREPARE_TX:
-          printf("Received PREPARE for TID %d from worker %d\n", message.tid, client.sin_port);
+          printf("Received PREPARE for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
           res = tm_prepared(sockfd, txlog, message.tid, client);
           break;
         case ABORT_TX:
-          printf("Received ABORT for TID %d from worker %d\n", message.tid, client.sin_port);
+          printf("Received ABORT for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
           res = tm_abort(sockfd, txlog, message.tid, client, 0);
           break;
         case ABORT_CRASH_TX:
-          printf("Received ABORT_CRASH for TID %d from worker %d\n", message.tid, client.sin_port);
+          printf("Received ABORT_CRASH for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
           res = tm_abort(sockfd, txlog, message.tid, client, 1);
           break;
         case POLL_STATE_TX:
-          printf("Received POLL_STATE for TID %d from worker %d\n", message.tid, client.sin_port);
+          printf("Received POLL_STATE for TID %d from worker %d\n", message.tid, ntohs(client.sin_port));
           res = tm_poll(sockfd, txlog, message.tid, client);
           break;
         default:
