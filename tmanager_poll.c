@@ -12,19 +12,24 @@ int tm_poll(int sockfd, struct transactionSet * txlog, uint32_t tid, struct sock
             t = i;
     }
 
-    if (t == -1) {
-        printf("Transaction %d does not exist, replying failure\n", tid);
-        // Reply Failure
+    if (t == -1 || txlog->transaction[t].tstate == TX_ABORTED) {
+        if (t == -1)
+            printf("Transaction %d does not exist, replying ABORT\n", tid);
+        else
+            printf("Transaction %d was Aborted, replying ABORT\n", tid);
+        // Reply ABORT
         txMsgType reply;
-        reply.msgID = FAILURE_TX;
+        reply.msgID = ABORT_TX;
+        reply.tid = tid;
+        return send_message(sockfd, client, &reply);
+    } else if (txlog->transaction[t].tstate == TX_COMMITTED) {
+        printf("Transaction %d was Committed, replying COMMIT\n", tid);
+        // Reply COMMIT
+        txMsgType reply;
+        reply.msgID = COMMIT_TX;
         reply.tid = tid;
         return send_message(sockfd, client, &reply);
     }
-
-    // Reply Success with state
-    txMsgType reply;
-    reply.msgID = SUCCESS_TX;
-    reply.tid = tid;
-    reply.state = txlog->transaction[t].tstate;
-    return send_message(sockfd, client, &reply);
+    // If voting or in progress, ignore
+    return 0;
 }

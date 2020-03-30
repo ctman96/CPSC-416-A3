@@ -14,7 +14,7 @@ int tm_begin(int sockfd, struct transactionSet * txlog, uint32_t tid, struct soc
             txlog->transaction[i].tstate == TX_ABORTED ||
             txlog->transaction[i].tstate == TX_COMMITTED)
             t = i;
-        else if (txlog->transaction[i].tstate != TX_NOTINUSE && txlog->transaction[i].txID == tid)
+        else if (txlog->transaction[i].txID == tid)
             id_conflict = 1;
     }
 

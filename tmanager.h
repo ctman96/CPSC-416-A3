@@ -22,6 +22,14 @@
 #include <sys/socket.h>
 #include "transaction_msg.h"
 
+enum txState {
+    TX_NOTINUSE = 100,
+    TX_INPROGRESS,
+    TX_VOTING,
+    TX_ABORTED,
+    TX_COMMITTED
+};
+
 struct tx {
   unsigned long txID;
   enum txState tstate;
