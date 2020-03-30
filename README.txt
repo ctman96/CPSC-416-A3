@@ -12,3 +12,6 @@ to the txManager, and then crashing. When we come back, we will wait for
 - As per piazza @412, we enter an 'uncertain state' after sending a prepared message but not 
 yet recieving a commit message from the txmanager. In this state, we wait 30 seconds, and then
 send another prepared message every 10 seconds.
+- From @392, Prof. Acton states that "If there is no transaction under way and you get a 
+voteabort it can simply be ignored." We follow this design descision, in that we only abort
+- As per @407, we do not process ANY messages while delayed.

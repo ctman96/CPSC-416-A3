@@ -207,7 +207,14 @@ int main(int argc, char ** argv) {
     // ---------------------------------------------------
     // TODO:
     // - make sure coming back from crash is proper!
+    // - What is the "required local processing" that occurs after waiting delay time and then crashing?
     // - voteabort must make NEXT commit abort. Conflicting piazza posts! Refer to @520 though.
+    // but in the same vein, @392 Acton says that " If there is no transaction under way and 
+    // you get a voteabort it can simply be ignored" which means that we should follow this approach?
+    // ^ from above, we're following 392. 361 conflicts with this too though! JEEZ!
+    // okay, from what I can tell it boils down to waiting until you're asked for a vote, and THEN voting 
+    // abort. the abort command would just send an abort at any time, but voteabort waits until asked for
+    // votes
 
     // CHECK:
     // - entering in progress states and exiting. Make sure that current approach is good with tas
@@ -379,16 +386,10 @@ int main(int argc, char ** argv) {
           break;
 
         case VOTE_ABORT:
-        // vote abort, ignore if no transaction
-        // TODO - can we vote abort after committing?? Might need to add another state to the workerTxState that's just INTRANSACTIOn
+        // set flag, ignore if no transaction. Can prob remove the check for aborted state as well
         if ((log->log.txState != WTX_NOTACTIVE) && (log->log.txState != WTX_ABORTED)) {
-          struct txMsgType msg;
-          msg.msgId = ABORT_TX;
-          msg.tid = log->log.txID;
-          send_message(sockfdTx, txClient, msg);
-        } else {
           voteAbortFlag = true;
-        }
+        } 
           break;
 
         default:
@@ -414,15 +415,25 @@ int main(int argc, char ** argv) {
     switch (txMessage.msgId) {
 
       case PREPARE_TX:
-      struct txMsgType msg;
-      msg.msgId = PREPARE_TX;
-      msg.tid = log->log.txID;
-      send_message(sockfdTx, txClient, msg);
-      // enter into an uncertain state until we receive a response from the txmanager
-      log->log.txState = WTX_UNCERTAIN;
+      // vote prepared by default; if have voteAbort flag set, then respond abort instead of prepared
+      if (!voteAbortFlag) {
+        struct txMsgType msg;
+        msg.msgId = PREPARE_TX;
+        msg.tid = log->log.txID;
+        send_message(sockfdTx, txClient, msg);
+        // enter into an uncertain state until we receive a response from the txmanager
+        log->log.txState = WTX_UNCERTAIN;
 
-      if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
-        perror("Msync problem"); 
+        if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+          perror("Msync problem"); 
+        }
+
+      } else {
+        struct txMsgType msg;
+        msg.msgId = ABORT_TX;
+        msg.tid = log->log.txID;
+        send_message(sockfdTx, txClient, msg);
+        voteAbortFlag = false;
       }
         break;
 
@@ -482,9 +493,7 @@ int main(int argc, char ** argv) {
         break;
 
       case FAILURE_TX:
-      // TODO - print failure reason if there is one, or just print fail
       printf("Failure")
-      // waiting = false;
       _exit();
         break;
 
