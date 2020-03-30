@@ -173,8 +173,10 @@ int main(int argc, char ** argv) {
     exit(-1); 
   }
 
-
-  abortFlag = false;
+  // timeout vars
+  bool waiting = false;
+  clock_t begin;
+  clock_t end;
 
   txMsgType cmdMessage;
   socklen_t cmdLen;
@@ -191,175 +193,192 @@ int main(int argc, char ** argv) {
     // send msgs or edit data depending on msg
     // ---------------------------------------------------
     // TODO:
-    // All of the switch statements
-    // add section for txmanager socket
-    // How do we deal with responses from the manager?
+    // entering in progress states and exiting
+    // timeouts. Might have to keep track of last message sent out to txmanager for normal procedures, and if haven't gotten
+    // response in timeout (10 secs) then fail?
+    // clear log when you commit or abort
+    // need to add in uncertain state
+
     // Questions:
     // Do we update the log->log.newA AND log->txDataA whenever we do newA? (same for B)
     // when do we flush the logfile?
       // to flush the log it, we must also flush the txData; this means that we would be flushing 
       // data to disk to early. must instead just update log, and not txData UNTIL END OF TX.
       // confirm above! ^
+    // does it matter what msgId is?
 
-    // check for commands
-    cmdMessage.msgId = 0;
+    // check for commands. If currently waiting for a response, then skip this
+    if (!waiting) {
+      cmdMessage.msgId = 0;
+      cmdLen = sizeof(cmdClient);
+      memset(&cmdClient, 0, sizeof(cmdClient));
+      int size = recvfrom(sockfdCmd, &cmdMessage, sizeof(cmdMessage), 0, (struct sockaddr *) &cmdClient, &cmdLen);
 
-    cmdLen = sizeof(cmdClient);
-    memset(&cmdClient, 0, sizeof(cmdClient));
-    int size = recvfrom(sockfdCmd, &cmdMessage, sizeof(cmdMessage), 0, (struct sockaddr *) &cmdClient, &cmdLen);
+      if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+        perror("Receiving error:");
+        running = 0;
+        abort();
+      } else if (n >= 0) {
+        printf("Got a command packet\n");
+    
+      switch (cmdMessage.msgId) {
 
-    if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
-      perror("Receiving error:");
-      running = 0;
-      abort();
-    } else if (n >= 0) {
-      printf("Got a command packet\n");
-  
-    switch (cmdMessage.msgId) {
+        case BEGINTX:
+        // send a begin transaction message to manager (with txid TID). Read docs for errors
+        // if manager returns error (BC id is already in use), worker exits
+        struct txMsgType msg;
+        msg.msgId = BEGIN_TX;
+        msg.tid = cmdMessage.TID
+        send_message(sockfdTx, txClient, msg);
+        begin = clock();
+        waiting = true;
+          break;
+          
+        case JOINTX:
+        // send a join transaction msg to txmanager to join tx TID.
+        struct txMsgType msg;
+        msg.msgId = JOIN_TX;
+        msg.tid = cmdMessage.TID
+        send_message(sockfdTx, txClient, msg);
+        begin = clock();
+        waiting = true;
+          break;
 
-      case BEGINTX:
-      // send a begin transaction message to manager (with txid TID). Read docs for errors
-      // if manager returns error (BC id is already in use), worker exits
-      struct txMsgType msg;
-      msg.msgId = BEGIN_TX;
-      msg.tid = cmdMessage.TID
-      send_message(sockfdCmd, cmdClient, msg);
-        break;
-        
-      case JOINTX:
-      // send a join transaction msg to txmanager to join tx TID.
-      struct txMsgType msg;
-      msg.msgId = JOIN_TX;
-      msg.tid = cmdMessage.TID
-      send_message(sockfdCmd, cmdClient, msg);
-        break;
+        case NEW_A:
+        // if a transaction not underway, update A. else, update log and then update data
+        // if in not active state, edit A or B directly
+        // if in transaction, then log 
 
-      case NEW_A:
-      // if a transaction not underway, update A. else, update log and then update data
-      // if in not active state, then not in tx, so edit A or B directly
-      // if in anything but not active state, then in transaction so log 
+        if (log->log.txState == WTX_NOTACTIVE) {
+          log->txData.A = cmdMessage.newValue;
+        } else {
+          // check if old A has already been saved, if not, save it and mark oldSaved
+          if ((A_MASK & log->log.oldSaved) != A_MASK) {
+            log->log.oldA = log->txData.A;
+            log->log.oldSaved = log->log.oldSaved | A_MASK;
+            printf("Saved old A\n");\
+          }
 
-      if (log->log.txState == WTX_NOTACTIVE) {
-        log->txData.A = cmdMessage.newValue;
+          log->txData.A = cmdMessage.newValue;
+          log->log.newA = cmdMessage.newValue;
+        }
+
+        if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+            perror("Msync problem"); 
+        }
+          break;
+
+        case NEW_B:
+        // if a transaction not underway, update B. else, update log and then update data
+
+        if (log->log.txState == WTX_NOTACTIVE) {
+          log->txData.B = cmdMessage.newValue;
+        } else {
+          // check if old B has already been saved, if not, save it and mark oldSaved
+          if ((B_MASK & log->log.oldSaved) != B_MASK) {
+            log->log.oldB = log->txData.B;
+            log->log.oldSaved = log->log.oldSaved | B_MASK;
+            printf("Saved old B\n");\
+          }
+
+          log->txData.B = cmdMessage.newValue;
+          log->log.newB = cmdMessage.newValue;
+        }
+
         if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
           perror("Msync problem"); 
         }
-      } else {
+          break;
 
-        // check if old A has already been saved, if not, save it and mark oldSaved
-        if ((A_MASK & log->log.oldSaved) != A_MASK) {
-          log->log.oldA = log->txData.A;
-          log->log.oldSaved = log->log.oldSaved | A_MASK;
-          printf("Saved old A\n");\
+        case NEW_IDSTR:
+
+        if (log->log.txState == WTX_NOTACTIVE) {
+          log->txData.A = cmdMessage.newValue;
+        } else {
+
+          // check if old IDstring has already been saved, if not, save it and mark oldSaved
+          if ((ID_MASK & log->log.oldSaved) != ID_MASK) {
+            log->log.oldIDstring = log->txData.IDstring;
+            log->log.oldSaved = log->log.oldSaved | ID_MASK;
+            printf("Saved old IDstring\n");\
+          }
+
+          log->txData.IDstring = cmdMessage.newValue;
+          log->log.newIDstring = cmdMessage.newValue;
         }
 
-        log->txData.A = cmdMessage.newValue;
-        log->log.newA = cmdMessage.newValue;
-      }
-        break;
-
-      case NEW_B:
-      // if a transaction not underway, update B. else, update log and then update data
-
-      if (log->log.txState == WTX_NOTACTIVE) {
-        log->txData.B = cmdMessage.newValue;
         if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
           perror("Msync problem"); 
         }
-      } else {
+          break;
 
-        // check if old B has already been saved, if not, save it and mark oldSaved
-        if ((B_MASK & log->log.oldSaved) != B_MASK) {
-          log->log.oldB = log->txData.B;
-          log->log.oldSaved = log->log.oldSaved | B_MASK;
-          printf("Saved old B\n");\
+        case DELAY_RESPONSE:
+        // TODO - more edge cases for this one
+        if (cmdMessage.delay >= 0) {
+          sleep(cmdMessage.delay);
+        } else {
+          sleep(abs(cmdMessage.delay));
+          // need to "perform all the actions required by that decision but crash just after before responding to the the coordinator."?
+          // if need to do additional processing, can set flag and then crash at end of processing
+          _exit();
         }
+          break;
 
-        log->txData.B = cmdMessage.newValue;
-        log->log.newB = cmdMessage.newValue;
-      }
-        break;
-
-      case NEW_IDSTR:
-
-      if (log->log.txState == WTX_NOTACTIVE) {
-        log->txData.A = cmdMessage.newValue;
-        if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
-          perror("Msync problem"); 
-        }
-      } else {
-
-        // check if old IDstring has already been saved, if not, save it and mark oldSaved
-        if ((ID_MASK & log->log.oldSaved) != ID_MASK) {
-          log->log.oldIDstring = log->txData.IDstring;
-          log->log.oldSaved = log->log.oldSaved | ID_MASK;
-          printf("Saved old IDstring\n");\
-        }
-
-        log->txData.IDstring = cmdMessage.newValue;
-        log->log.newIDstring = cmdMessage.newValue;
-      }
-        break;
-
-      case DELAY_RESPONSE:
-      // TODO - more edge cases for this one
-      if (cmdMessage.delay >= 0) {
-        sleep(cmdMessage.delay);
-      } else {
-        sleep(abs(cmdMessage.delay));
-        // need to "perform all the actions required by that decision but crash just after before responding to the the coordinator."?
-        // if need to do additional processing, can set flag and then crash at end of processing
+        case CRASH:
+        // simulate crash by calling _exit()
         _exit();
+          break;
+
+        case COMMIT:
+        // send commit message to txmanager
+        struct txMsgType msg;
+        msg.msgId = COMMIT_TX;
+        // TODO - figure out with cody if commented line below is needed, as each worker will only be involved in one transaction
+        // msg.tid = log->log.txID;
+        send_message(sockfdTx, txClient, msg);
+          break;
+
+        case COMMIT_CRASH:
+        // send commit message to txmanager that also tells manager to crash
+        struct txMsgType msg;
+        msg.msgId = COMMIT_CRASH_TX;
+        // msg.tid = log->log.txID;
+        send_message(sockfdTx, txClient, msg);
+          break;
+
+        case ABORT:
+        // send abort message to txmanager
+        struct txMsgType msg;
+        msg.msgId = ABORT_TX;
+        // msg.tid = log->log.txID;
+        send_message(sockfdTx, txClient, msg);
+          break;
+
+        case ABORT_CRASH:
+        // send abort message to txmanager that also tells manager to crash
+        struct txMsgType msg;
+        msg.msgId = ABORT_CRASH_TX;
+        // msg.tid = log->log.txID;
+        send_message(sockfdTx, txClient, msg);
+          break;
+
+        case VOTE_ABORT:
+        // vote abort, ignore if no transaction
+        // TODO - can we vote abort after committing?? Might need to add another state to the workerTxState that's just INTRANSACTIOn
+        if ((log->log.txState != WTX_NOTACTIVE) && (log->log.txState != WTX_ABORTED)) {
+          struct txMsgType msg;
+          msg.msgId = ABORT_TX;
+          // msg.tid = log->log.txID;
+          send_message(sockfdTx, txClient, msg);
+        }
+          break;
+
+        default:
+          // No valid msgID. exit or do nothing?
+          break;
       }
-        break;
-
-      case CRASH:
-      // simulate crash by calling _exit()
-      _exit();
-        break;
-
-      case COMMIT:
-      // send commit message to txmanager
-      struct txMsgType msg;
-      msg.msgId = COMMIT_TX;
-      // TODO - figure out with cody if commented line below is needed, as each worker will only be involved in one transaction
-      // msg.tid = log->log.txID;
-      send_message(sockfdCmd, cmdClient, msg);
-        break;
-
-      case COMMIT_CRASH:
-      // send commit message to txmanager that also tells manager to crash
-      struct txMsgType msg;
-      msg.msgId = COMMIT_CRASH_TX;
-      // msg.tid = log->log.txID;
-      send_message(sockfdCmd, cmdClient, msg);
-        break;
-
-      case ABORT:
-      // send abort message to txmanager
-      struct txMsgType msg;
-      msg.msgId = ABORT_TX;
-      // msg.tid = log->log.txID;
-      send_message(sockfdCmd, cmdClient, msg);
-        break;
-
-      case ABORT_CRASH:
-      // send abort message to txmanager that also tells manager to crash
-      struct txMsgType msg;
-      msg.msgId = ABORT_CRASH_TX;
-      // msg.tid = log->log.txID;
-      send_message(sockfdCmd, cmdClient, msg);
-        break;
-
-      case VOTE_ABORT:
-      // vote abort when coordinator next sends prepare message
-      abortFlag = true;
-        break;
-
-      default:
-        // No valid msgID. exit or do nothing?
-        break;
     }
+
 
     // now handle txmanager packets
     txMessage.msgId = 0;
@@ -377,46 +396,46 @@ int main(int argc, char ** argv) {
   
     switch (txMessage.msgId) {
 
-      case BEGIN_TX:
+      case PREPARE_TX:
       // TODO
-        break;
-
-      case JOIN_TX:
-      // TODO
+      struct txMsgType msg;
+      msg.msgId = PREPARE_TX;
+      send_message(sockfdTx, txClient, msg);
+      log->log.txState = WTX_PREPARED;
         break;
 
       case COMMIT_TX:
-      // TODO
-        break;
-
-      case COMMIT_CRASH_TX:
-      // TODO
-        break;
-
-      case PREPARE_TX:
-      // TODO
         break;
 
       case ABORT_TX:
       // TODO
         break;
 
-      case ABORT_CRASH_TX:
-      // TODO
-        break;
-
       case SUCCESS_TX:
       // TODO
+      printf("Success")
+      waiting = false;
         break;
 
       case FAILURE_TX:
-      // TODO
+      // TODO - print failure reason if there is one, or just print fail
+      printf("Failure")
+      waiting = false;
+      _exit();
         break;
 
       default:
         // No valid msgID. exit or do nothing?
         break;
     }
+
+    end = clock();
+    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+    if (time_spent >= TIMEOUT) {
+      waiting = false;
+      // TODO - do whatever is required at this point
+    }
+
   }
 }
 

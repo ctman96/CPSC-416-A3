@@ -11,6 +11,10 @@
 #define B_MASK 2
 #define ID_MASK 4
 
+// timeouts
+#define TIMEOUT 10
+#define UNCERTAIN_TIMEOUT 30
+
 // Feel free to modify anything in this file except the
 // struct transactionData
 
