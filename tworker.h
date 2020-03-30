@@ -20,6 +20,7 @@
 
 enum workerTxState {
   WTX_NOTACTIVE  = 400,
+  WTX_ACTIVE,
   WTX_ABORTED,
   WTX_PREPARED,
   WTX_COMMITTED

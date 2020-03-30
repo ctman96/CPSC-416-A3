@@ -94,6 +94,8 @@ int main(int argc, char ** argv) {
       printf("Writing problem to log\n");
       exit(-1);
     }
+   } else {
+     printf("Already existing logfile")
    }
 
    // Now map the file in.
@@ -104,28 +106,40 @@ int main(int argc, char ** argv) {
    }
 
    // Some demo data
-   strncpy(log->txData.IDstring, "Hi there!! :-)", IDLEN);
-   log->txData.A = 10;
-   log->txData.B = 100;
-   log->log.oldA = 83;
-   log->log.newA = 10;
-   log->log.oldB = 100;
-   log->log.newB = 1023;
-   log->initialized = -1;
-   if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
-     perror("Msync problem");
-   }
+  //  strncpy(log->txData.IDstring, "Hi there!! :-)", IDLEN);
+  //  log->txData.A = 10;
+  //  log->txData.B = 100;
+  //  log->log.oldA = 83;
+  //  log->log.newA = 10;
+  //  log->log.oldB = 100;
+  //  log->log.newB = 1023;
+  //  log->initialized = -1;
+  //  if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+  //    perror("Msync problem");
+  //  }
+  // Some demo data
+  //  strncpy(log->log.newIDstring, "1234567890123456789012345678901234567890", IDLEN);
    
     printf("Worker Start")
     printf("Command port:  %d\n", cmdPort);
     printf("TX port:       %d\n", txPort);
     printf("Log file name: %s\n", logFileName);
-  // Some demo data
-   strncpy(log->log.newIDstring, "1234567890123456789012345678901234567890", IDLEN);
 
+  
 
   // Actual worker code
   // -------------------------------------------------------------
+
+  // worker recovery after crash. Only really applicable to undo logging (as documented in README)
+  // only should have to revert txData when active or prepared
+  if ((log->log.txState == WTX_ACTIVE) || (log->log.txState == WTX_PREPARED)) {
+    log->txData.A = log->log.oldA;
+    log->txData.B = log->log.oldB;
+    log->txData.IDstring = log->log.oldIDstring;
+
+    log->log.txState = WTX_NOTACTIVE
+  }
+
 
   // create two different sockets, one for cmd and one for txmanager
   int sockfdCmd;
@@ -178,6 +192,8 @@ int main(int argc, char ** argv) {
   clock_t begin;
   clock_t end;
 
+  bool voteAbortFlag = false;
+
   txMsgType cmdMessage;
   socklen_t cmdLen;
   struct sockaddr_in cmdClient;
@@ -193,21 +209,25 @@ int main(int argc, char ** argv) {
     // send msgs or edit data depending on msg
     // ---------------------------------------------------
     // TODO:
-    // entering in progress states and exiting
-    // timeouts. Might have to keep track of last message sent out to txmanager for normal procedures, and if haven't gotten
+    // - make sure coming back from crash is proper!
+    // - timeouts. Might have to keep track of last message sent out to txmanager for normal procedures, and if haven't gotten
     // response in timeout (10 secs) then fail?
-    // clear log when you commit or abort
-    // need to add in uncertain state
+    // - voteabort must make NEXT commit abort. Conflicting piazza posts! Refer to @520 though.
+
+    // CHECK:
+    // - entering in progress states and exiting. Make sure that current approach is good with tas
+    // - cleared important things in log when you commit or abort
+    // - worker recovery after crash
 
     // Questions:
-    // Do we update the log->log.newA AND log->txDataA whenever we do newA? (same for B)
-    // when do we flush the logfile?
-      // to flush the log it, we must also flush the txData; this means that we would be flushing 
-      // data to disk to early. must instead just update log, and not txData UNTIL END OF TX.
-      // confirm above! ^
     // does it matter what msgId is?
-
     // check for commands. If currently waiting for a response, then skip this
+
+    // at beginning, if we have an abort or a commit we know we can set state to notactive
+    if ((log->log.txState == WTX_COMMITTED) || (log->log.txState == WTX_ABORTED)) {
+      log->log.txState = WTX_NOTACTIVE;
+    }
+
     if (!waiting) {
       cmdMessage.msgId = 0;
       cmdLen = sizeof(cmdClient);
@@ -300,7 +320,7 @@ int main(int argc, char ** argv) {
           if ((ID_MASK & log->log.oldSaved) != ID_MASK) {
             log->log.oldIDstring = log->txData.IDstring;
             log->log.oldSaved = log->log.oldSaved | ID_MASK;
-            printf("Saved old IDstring\n");\
+            printf("Saved old IDstring\n");
           }
 
           log->txData.IDstring = cmdMessage.newValue;
@@ -313,13 +333,13 @@ int main(int argc, char ** argv) {
           break;
 
         case DELAY_RESPONSE:
-        // TODO - more edge cases for this one
         if (cmdMessage.delay >= 0) {
           sleep(cmdMessage.delay);
         } else {
           sleep(abs(cmdMessage.delay));
-          // need to "perform all the actions required by that decision but crash just after before responding to the the coordinator."?
-          // if need to do additional processing, can set flag and then crash at end of processing
+          // TODO - need to "perform all the actions required by that decision but crash just after before responding to the the coordinator."?
+          // if need to do additional processing, can set flag and then crash at end of processing.
+          // What descisions need to be made??
           _exit();
         }
           break;
@@ -333,8 +353,7 @@ int main(int argc, char ** argv) {
         // send commit message to txmanager
         struct txMsgType msg;
         msg.msgId = COMMIT_TX;
-        // TODO - figure out with cody if commented line below is needed, as each worker will only be involved in one transaction
-        // msg.tid = log->log.txID;
+        msg.tid = log->log.txID;
         send_message(sockfdTx, txClient, msg);
           break;
 
@@ -342,7 +361,7 @@ int main(int argc, char ** argv) {
         // send commit message to txmanager that also tells manager to crash
         struct txMsgType msg;
         msg.msgId = COMMIT_CRASH_TX;
-        // msg.tid = log->log.txID;
+        msg.tid = log->log.txID;
         send_message(sockfdTx, txClient, msg);
           break;
 
@@ -350,7 +369,7 @@ int main(int argc, char ** argv) {
         // send abort message to txmanager
         struct txMsgType msg;
         msg.msgId = ABORT_TX;
-        // msg.tid = log->log.txID;
+        msg.tid = log->log.txID;
         send_message(sockfdTx, txClient, msg);
           break;
 
@@ -358,7 +377,7 @@ int main(int argc, char ** argv) {
         // send abort message to txmanager that also tells manager to crash
         struct txMsgType msg;
         msg.msgId = ABORT_CRASH_TX;
-        // msg.tid = log->log.txID;
+        msg.tid = log->log.txID;
         send_message(sockfdTx, txClient, msg);
           break;
 
@@ -368,13 +387,14 @@ int main(int argc, char ** argv) {
         if ((log->log.txState != WTX_NOTACTIVE) && (log->log.txState != WTX_ABORTED)) {
           struct txMsgType msg;
           msg.msgId = ABORT_TX;
-          // msg.tid = log->log.txID;
+          msg.tid = log->log.txID;
           send_message(sockfdTx, txClient, msg);
+        } else {
+          voteAbortFlag = true;
         }
           break;
 
         default:
-          // No valid msgID. exit or do nothing?
           break;
       }
     }
@@ -392,7 +412,7 @@ int main(int argc, char ** argv) {
       running = 0;
       abort();
     } else if (n >= 0) {
-      printf("Got a transaction packet\n");
+      printf("Got a txmanager packet\n");
   
     switch (txMessage.msgId) {
 
@@ -405,14 +425,44 @@ int main(int argc, char ** argv) {
         break;
 
       case COMMIT_TX:
+      // got commit message from txmanager, so flush txData
+      // copy newVals to txData just for procedure's sake
+      log->txData.A = log->log.newA;
+      log->txData.B = log->log.newB;
+      log->txData.IDstring = log->log.newIDstring;
+      
+      // reset oldSaved to indicate no old values saved
+      log->log.oldSaved = 0;
+
+      // sync logfile
+      if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem"); 
+      }
+
+      log->log.txState = WTX_COMMITTED;
         break;
 
       case ABORT_TX:
-      // TODO
+      // write abort to log, revert txData to oldValues
+      log->txData.A = log->log.oldA;
+      log->txData.B = log->log.oldB;
+      log->txData.IDstring = log->log.oldIDstring;
+
+      // reset oldSaved to indicate no old values saved
+      log->log.oldSaved = 0;
+
+      // sync logfile
+      if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem"); 
+      }
+
+      log->log.txState = WTX_ABORTED;
         break;
 
       case SUCCESS_TX:
-      // TODO
+      // on success, set log transaction id to msg.tid
+      log->log.txID = txMessage.tid;
+      log->log.txState = WTX_ACTIVE;
       printf("Success")
       waiting = false;
         break;
@@ -420,12 +470,11 @@ int main(int argc, char ** argv) {
       case FAILURE_TX:
       // TODO - print failure reason if there is one, or just print fail
       printf("Failure")
-      waiting = false;
+      // waiting = false;
       _exit();
         break;
 
       default:
-        // No valid msgID. exit or do nothing?
         break;
     }
 
