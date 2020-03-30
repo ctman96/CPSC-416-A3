@@ -136,8 +136,12 @@ int main(int argc, char ** argv) {
     log->txData.A = log->log.oldA;
     log->txData.B = log->log.oldB;
     log->txData.IDstring = log->log.oldIDstring;
+    log->log.txState = WTX_ABORTED
 
-    log->log.txState = WTX_NOTACTIVE
+    if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem"); 
+    }
+
   }
 
 
@@ -187,13 +191,6 @@ int main(int argc, char ** argv) {
     exit(-1); 
   }
 
-  // timeout vars
-  bool waiting = false;
-  clock_t begin;
-  clock_t end;
-
-  bool voteAbortFlag = false;
-
   txMsgType cmdMessage;
   socklen_t cmdLen;
   struct sockaddr_in cmdClient;
@@ -210,20 +207,20 @@ int main(int argc, char ** argv) {
     // ---------------------------------------------------
     // TODO:
     // - make sure coming back from crash is proper!
-    // - timeouts. Might have to keep track of last message sent out to txmanager for normal procedures, and if haven't gotten
-    // response in timeout (10 secs) then fail?
     // - voteabort must make NEXT commit abort. Conflicting piazza posts! Refer to @520 though.
 
     // CHECK:
     // - entering in progress states and exiting. Make sure that current approach is good with tas
     // - cleared important things in log when you commit or abort
     // - worker recovery after crash
+    // - perhaps we should add an "uncertain" state, but would require removing the 
+    // - timeouts working correctly
 
     // Questions:
     // does it matter what msgId is?
     // check for commands. If currently waiting for a response, then skip this
 
-    // at beginning, if we have an abort or a commit we know we can set state to notactive
+    // at beginning, if we have an abort or a commit we know we can set state to notactive as we're done last tx
     if ((log->log.txState == WTX_COMMITTED) || (log->log.txState == WTX_ABORTED)) {
       log->log.txState = WTX_NOTACTIVE;
     }
@@ -417,11 +414,16 @@ int main(int argc, char ** argv) {
     switch (txMessage.msgId) {
 
       case PREPARE_TX:
-      // TODO
       struct txMsgType msg;
       msg.msgId = PREPARE_TX;
+      msg.tid = log->log.txID;
       send_message(sockfdTx, txClient, msg);
-      log->log.txState = WTX_PREPARED;
+      // enter into an uncertain state until we receive a response from the txmanager
+      log->log.txState = WTX_UNCERTAIN;
+
+      if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem"); 
+      }
         break;
 
       case COMMIT_TX:
@@ -440,6 +442,10 @@ int main(int argc, char ** argv) {
       }
 
       log->log.txState = WTX_COMMITTED;
+
+      if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem"); 
+      }
         break;
 
       case ABORT_TX:
@@ -457,6 +463,10 @@ int main(int argc, char ** argv) {
       }
 
       log->log.txState = WTX_ABORTED;
+
+      if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem"); 
+      }
         break;
 
       case SUCCESS_TX:
@@ -465,6 +475,10 @@ int main(int argc, char ** argv) {
       log->log.txState = WTX_ACTIVE;
       printf("Success")
       waiting = false;
+
+      if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem"); 
+      }
         break;
 
       case FAILURE_TX:
@@ -478,12 +492,32 @@ int main(int argc, char ** argv) {
         break;
     }
 
-    end = clock();
-    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    if (time_spent >= TIMEOUT) {
-      waiting = false;
-      // TODO - do whatever is required at this point
+
+    // if in uncertain state, wait 30 seconds, then resend prepared every 10 seconds
+    // if just waiting, then timeout after 10 seconds
+    if (log->log.txState == WTX_UNCERTAIN) {
+      end = clock();
+      double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+      // TODO - check logic here. Should be sending a message every 10 seconds after 30 seconds, but I'm writing this at 2 AM
+      if (time_spent >= UNCERTAIN_TIMEOUT) {
+        unsigned int waitTime = time_spent - UNCERTAIN_TIMEOUT - uncertainStateCtr * 10;
+        if (waitTime >= TIMEOUT) {
+          struct txMsgType msg;
+          msg.msgId = PREPARE_TX;
+          msg.tid = log->log.txID;
+          send_message(sockfdTx, txClient, msg);
+          uncertainStateCtr += 1;
+        }
+      }
+    } else if (waiting) {
+      end = clock();
+      double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+      if (time_spent >= TIMEOUT) {
+        waiting = false;
+        // TODO - do whatever is required at this point
+      }
     }
+
 
   }
 }

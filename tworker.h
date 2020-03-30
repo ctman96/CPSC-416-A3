@@ -23,7 +23,8 @@ enum workerTxState {
   WTX_ACTIVE,
   WTX_ABORTED,
   WTX_PREPARED,
-  WTX_COMMITTED
+  WTX_COMMITTED,
+  WTX_UNCERTAIN
 };
 
 
@@ -55,5 +56,13 @@ struct logFile {
   struct transactionData txData;
   struct workerLog log;
 };
+
+// timeout vars
+bool waiting = false;
+unsigned int uncertainStateCtr = 0;
+clock_t begin;
+clock_t end;
+
+bool voteAbortFlag = false;
 
 #endif /* TWORKER_H */

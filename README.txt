@@ -7,3 +7,8 @@ flushed to disk. The same would be true of an abort state, as we would assume th
 has been reverted BEFORE setting the state to WTX_ABORTED.
 - According to piazza @399, we do not have to process any requests while waiting for a
 response. We therefore ignore all command requests while waiting for a success or fail.
+- From piazza @483, we enter the uncertain state after sending a "preparedToCommit" message
+to the txManager, and then crashing. When we come back, we will wait for 
+- As per piazza @412, we enter an 'uncertain state' after sending a prepared message but not 
+yet recieving a commit message from the txmanager. In this state, we wait 30 seconds, and then
+send another prepared message every 10 seconds.
