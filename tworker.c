@@ -15,6 +15,7 @@
 #include <stdbool.h>
 
 #include "msg.h"
+#include "transaction_msg.h"
 #include "tworker.h"
 
 
@@ -193,6 +194,19 @@ int main(int argc, char ** argv) {
     exit(-1); 
   }
 
+  // Setup tmanager address
+  char *hostname = "localhost";
+  struct addrinfo hints, *tmanagerAddr;
+  tmanagerAddr = NULL;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_socktype = SOCK_DGRAM;
+  hints.ai_family = AF_INET;
+  hints.ai_protocol = IPPROTO_UDP;
+  if (getaddrinfo(hostname, argv[1], &hints, &tmanagerAddr)) {
+      perror("Couldn't lookup hostname");
+      return -1;
+  }
+
   txMsgType cmdMessage;
   socklen_t cmdLen;
   struct sockaddr_in cmdClient;
@@ -235,7 +249,7 @@ int main(int argc, char ** argv) {
     }
 
     if (!waiting) {
-      cmdMessage.msgId = 0;
+      cmdMessage.msgID = 0;
       cmdLen = sizeof(cmdClient);
       memset(&cmdClient, 0, sizeof(cmdClient));
       int size = recvfrom(sockfdCmd, &cmdMessage, sizeof(cmdMessage), 0, (struct sockaddr *) &cmdClient, &cmdLen);
@@ -244,7 +258,7 @@ int main(int argc, char ** argv) {
         perror("Receiving error:");
         running = 0;
         abort();
-      } else if (n >= 0) {
+      } else if (size >= 0) {
         printf("Got a command packet\n");
     
       switch (cmdMessage.msgId) {
@@ -252,9 +266,9 @@ int main(int argc, char ** argv) {
         case BEGINTX:
         // send a begin transaction message to manager (with txid TID). Read docs for errors
         // if manager returns error (BC id is already in use), worker exits
-        struct txMsgType msg;
+        txMsgType msg;
         msg.msgId = BEGIN_TX;
-        msg.tid = cmdMessage.TID
+        msg.tid = cmdMessage.tid
         send_message(sockfdTx, txClient, msg);
         begin = clock();
         waiting = true;
@@ -262,9 +276,9 @@ int main(int argc, char ** argv) {
           
         case JOINTX:
         // send a join transaction msg to txmanager to join tx TID.
-        struct txMsgType msg;
+        txMsgType msg;
         msg.msgId = JOIN_TX;
-        msg.tid = cmdMessage.TID
+        msg.tid = cmdMessage.tid
         send_message(sockfdTx, txClient, msg);
         begin = clock();
         waiting = true;
@@ -357,7 +371,7 @@ int main(int argc, char ** argv) {
 
         case COMMIT:
         // send commit message to txmanager
-        struct txMsgType msg;
+        txMsgType msg;
         msg.msgId = COMMIT_TX;
         msg.tid = log->log.txID;
         send_message(sockfdTx, txClient, msg);
@@ -365,7 +379,7 @@ int main(int argc, char ** argv) {
 
         case COMMIT_CRASH:
         // send commit message to txmanager that also tells manager to crash
-        struct txMsgType msg;
+        txMsgType msg;
         msg.msgId = COMMIT_CRASH_TX;
         msg.tid = log->log.txID;
         send_message(sockfdTx, txClient, msg);
@@ -373,7 +387,7 @@ int main(int argc, char ** argv) {
 
         case ABORT:
         // send abort message to txmanager
-        struct txMsgType msg;
+        txMsgType msg;
         msg.msgId = ABORT_TX;
         msg.tid = log->log.txID;
         send_message(sockfdTx, txClient, msg);
@@ -381,7 +395,7 @@ int main(int argc, char ** argv) {
 
         case ABORT_CRASH:
         // send abort message to txmanager that also tells manager to crash
-        struct txMsgType msg;
+        txMsgType msg;
         msg.msgId = ABORT_CRASH_TX;
         msg.tid = log->log.txID;
         send_message(sockfdTx, txClient, msg);
@@ -419,7 +433,7 @@ int main(int argc, char ** argv) {
       case PREPARE_TX:
       // vote prepared by default; if have voteAbort flag set, then respond abort instead of prepared
       if (!voteAbortFlag) {
-        struct txMsgType msg;
+        txMsgType msg;
         msg.msgId = PREPARE_TX;
         msg.tid = log->log.txID;
         send_message(sockfdTx, txClient, msg);
@@ -431,7 +445,7 @@ int main(int argc, char ** argv) {
         }
 
       } else {
-        struct txMsgType msg;
+        txMsgType msg;
         msg.msgId = ABORT_TX;
         msg.tid = log->log.txID;
         send_message(sockfdTx, txClient, msg);
@@ -513,8 +527,8 @@ int main(int argc, char ** argv) {
       if (time_spent >= UNCERTAIN_TIMEOUT) {
         unsigned int waitTime = time_spent - UNCERTAIN_TIMEOUT - uncertainStateCtr * 10;
         if (waitTime >= TIMEOUT) {
-          struct txMsgType msg;
-          msg.msgId = PREPARE_TX;
+          txMsgType msg;
+          msg.msgId = POLL_STATE_TX;
           msg.tid = log->log.txID;
           send_message(sockfdTx, txClient, msg);
           uncertainStateCtr += 1;
