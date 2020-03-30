@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "msg.h"
 #include "tworker.h"
@@ -95,7 +96,7 @@ int main(int argc, char ** argv) {
       exit(-1);
     }
    } else {
-     printf("Already existing logfile")
+     printf("Already existing logfile");
    }
 
    // Now map the file in.
@@ -120,7 +121,7 @@ int main(int argc, char ** argv) {
   // Some demo data
   //  strncpy(log->log.newIDstring, "1234567890123456789012345678901234567890", IDLEN);
    
-    printf("Worker Start")
+    printf("Worker Start");
     printf("Command port:  %d\n", cmdPort);
     printf("TX port:       %d\n", txPort);
     printf("Log file name: %s\n", logFileName);
@@ -153,25 +154,26 @@ int main(int argc, char ** argv) {
   struct sockaddr_in servAddrTx;
 
   if ( (sockfdCmd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
-    perror("socket creation failed"); 
+    perror("Cmd socket creation failed"); 
     exit(-1); 
   }
 
   if ( (sockfdTx = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
-    perror("socket creation failed"); 
+    perror("Tx socket creation failed"); 
     exit(-1); 
   }
 
   // Set sockets as non-blocking
-  int flags = fcntl(properties.sockfdCmd, F_GETFL);
-  flags |= O_NONBLOCK;
-  fcntl(properties.sockfdCmd, F_SETFL, flags);
+  int cmdFlags = fcntl(sockfdCmd, F_GETFL);
+  cmdFlags |= O_NONBLOCK;
+  fcntl(sockfdCmd, F_SETFL, cmdFlags);
 
-  int flags = fcntl(properties.sockfdTx, F_GETFL);
-  flags |= O_NONBLOCK;
-  fcntl(properties.sockfdTx, F_SETFL, flags);
+  int txFlags = fcntl(sockfdTx, F_GETFL);
+  txFlags |= O_NONBLOCK;
+  fcntl(sockfdTx, F_SETFL, txFlags);
 
   // Setup my server information 
+  // TODO - pretty sure we don't have to replicate this code here twice
   memset(&servAddr, 0, sizeof(servAddr)); 
   servAddr.sin_family = AF_INET; 
   servAddr.sin_port = htons(port);
@@ -484,7 +486,7 @@ int main(int argc, char ** argv) {
       // on success, set log transaction id to msg.tid
       log->log.txID = txMessage.tid;
       log->log.txState = WTX_ACTIVE;
-      printf("Success")
+      printf("Success");
       waiting = false;
 
       if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
@@ -493,7 +495,7 @@ int main(int argc, char ** argv) {
         break;
 
       case FAILURE_TX:
-      printf("Failure")
+      printf("Failure");
       _exit();
         break;
 
