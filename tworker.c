@@ -677,8 +677,8 @@ int main(int argc, char ** argv) {
       double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
       // TODO - check logic here. Should be sending a message every 10 seconds after 30 seconds, but I'm writing this at 2 AM
       if (time_spent >= UNCERTAIN_TIMEOUT) {
-        int waitTime = time_spent - UNCERTAIN_TIMEOUT + 10 - uncertainStateCtr * 10;
-        if (waitTime >= TIMEOUT) {
+        int waitTime = time_spent - UNCERTAIN_TIMEOUT - uncertainStateCtr * 10;
+        if (waitTime >= 0) {
             // Setup tmanager address
           char *hostname = "localhost";
           struct addrinfo hints, *tmanagerAddr;
