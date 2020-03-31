@@ -562,7 +562,7 @@ int main(int argc, char ** argv) {
           msg.msgID = PREPARE_TX;
           msg.tid = log->log.txID;
           // enter into an uncertain state until we receive a response from the txmanager
-          log->log.txState = WTX_UNCERTAIN;
+          log->log.txState = WTX_PREPARED;
           begin = clock();
 
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
@@ -576,6 +576,11 @@ int main(int argc, char ** argv) {
           }
 
           send_message2(sockfdTx, txClient, &msg);
+
+          log->log.txState = WTX_UNCERTAIN;
+          if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+            perror("Msync problem");
+          }
 
         } else {
           txMsgType msg;

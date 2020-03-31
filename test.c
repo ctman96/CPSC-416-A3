@@ -344,6 +344,31 @@ int main(int argc, char ** argv) {
 
         printf("=== %s ===\n", test_name);
 
+        if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
+            perror("Msync problem");
+        }
+        if (tw1_log->log.txState != WTX_NOTACTIVE) {
+            printf("%d\n", tw1_log->log.txState);
+            printf("%s = FAILED\n", test_name);
+            exit(-1);
+        }
+        printf("%d\n", tw1_log->txData.A);
+
+        // Set A initial value
+        snprintf(cmd, sizeof(cmd), "./cmd newa localhost %d %d", tw1_cmd_port, tm_port, 1337);
+        system(cmd);
+        sleep(1);
+        if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
+            perror("Msync problem");
+        }
+        printf("%d\n", tw1_log->txData.A);
+        if (tw1_log->txData.A == 1337) {
+            printf("%s - Worker 1 Set A\n", test_name);
+        } else {
+            printf("%s = FAILED\n", test_name);
+            exit(-1);
+        }
+
         // Worker 1 Begins
         unsigned long test_tid = 1001002;
         snprintf(cmd, sizeof(cmd), "./cmd begin localhost %d localhost %d %d", tw1_cmd_port, tm_port, test_tid);
@@ -362,33 +387,32 @@ int main(int argc, char ** argv) {
             printf("%s - Worker 1 Began\n", test_name);
         }
 
-        // Worker 2 Joins
-        snprintf(cmd, sizeof(cmd), "./cmd join localhost %d localhost %d %d", tw2_cmd_port, tm_port, test_tid);
+        // Set A new value
+        snprintf(cmd, sizeof(cmd), "./cmd newa localhost %d %d", tw1_cmd_port, tm_port, 69420);
         system(cmd);
-
         sleep(1);
-
-        if (msync(tw2_log, sizeof(struct logFile), MS_SYNC)) {
+        if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
             perror("Msync problem");
         }
-
-        if (!(tw2_log->log.txState == WTX_ACTIVE && tw2_log->log.txID == test_tid)) {
+        if (tw1_log->log.newA == 69420) {
+            printf("%s - Worker 1 Set A\n", test_name);
+        } else {
             printf("%s = FAILED\n", test_name);
             exit(-1);
-        } else {
-            printf("%s - Worker 2 Joined\n", test_name);
         }
+
+        // Kill Manager
+        kill(properties.tm_pid, SIGINT);
+        printf("%s - Killed Manager\n", test_name);
 
         // Worker 1 commits
         snprintf(cmd, sizeof(cmd), "./cmd commit localhost %d", tw1_cmd_port);
         system(cmd);
 
-        sleep(2);
+        printf("%s - Waiting 31s for commit to abort...\n", test_name);
+        sleep(31);
 
         if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
-            perror("Msync problem");
-        }
-        if (msync(tw2_log, sizeof(struct logFile), MS_SYNC)) {
             perror("Msync problem");
         }
 
@@ -398,15 +422,13 @@ int main(int argc, char ** argv) {
         } else {
             printf("%s - Worker 1 Completed\n", test_name);
         }
-        if (!(tw2_log->log.txState == WTX_NOTACTIVE && tw2_log->log.txID == test_tid)) {
+        if (tw1_log->txData.A == 1337) {
+            printf("%s - A reverted to oldA\n", test_name);
+            printf("%s = PASSED\n", test_name);
+        } else {
             printf("%s = FAILED\n", test_name);
             exit(-1);
-        } else {
-            printf("%s - Worker 2 Completed\n", test_name);
-            printf("%s = PASSED\n", test_name);
         }
-
-        // TODO
     }
 
 
