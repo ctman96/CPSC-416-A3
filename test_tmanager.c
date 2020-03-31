@@ -26,7 +26,7 @@ void usage(char * cmd) {
 }
 
 int send_message(int sockfd, struct addrinfo* tmanager, txMsgType* message) {
-    printf("send_message: message: (msgId: %d, tid: %d, state: %d)\n", message->msgID, message->tid, message->state);
+    printf("send_message: message: (msgId: %s, tid: %d)\n", txMsgKindToStr(message->msgID), message->tid);
     int bytesSent;
     bytesSent = sendto(sockfd, (void *) message, sizeof(*message), 0, tmanager->ai_addr, tmanager->ai_addrlen);
     if (bytesSent != sizeof(*message)) {
@@ -44,13 +44,13 @@ int recv_message(int sockfd, txMsgType* received_message, struct sockaddr_in* cl
         perror("Error receiving");
         return -1;
     }
-    printf("Received message (msgId: %d, tid: %d, state: %d\n", received_message->msgID, received_message->tid, received_message->state);
+    printf("Received message (msgId: %s, tid: %d)\n", txMsgKindToStr(received_message->msgID), received_message->tid);
 }
 
 int main(int argc, char ** argv) {
     unsigned long  tm_port;
-    unsigned long  port = 8000;
-    unsigned long  port2 = 8001;
+    unsigned long  port = 111171;
+    unsigned long  port2 = 111172;
 
     if (argc != 2) {
         usage(argv[0]);
@@ -171,43 +171,6 @@ int main(int argc, char ** argv) {
     } else {
         printf("%s = Passed\n", test_name);
     }
-
-
-
-    // =================================
-    test_name = "Poll Success";
-    // =================================
-    test.msgID = POLL_STATE_TX;
-    test.tid = 12345;
-
-    if (send_message(sockfd, tmanagerAddr, &test) < 0) return -1;
-    if (recv_message(sockfd, &received_msg, &client) < 0) return -1;
-
-    if (!(received_msg.msgID == SUCCESS_TX && received_msg.tid == test.tid && received_msg.state == TX_INPROGRESS)) {
-        printf("%s - Failed\n", test_name);
-        exit(-1);
-    } else {
-        printf("%s = Passed\n", test_name);
-    }
-
-
-
-    // =================================
-    test_name = "Poll Failure (Invalid TID)";
-    // =================================
-    test.msgID = POLL_STATE_TX;
-    test.tid = 11111;
-
-    if (send_message(sockfd, tmanagerAddr, &test) < 0) return -1;
-    if (recv_message(sockfd, &received_msg, &client) < 0) return -1;
-
-    if (!(received_msg.msgID == FAILURE_TX && received_msg.tid == test.tid)) {
-        printf("%s - Failed\n", test_name);
-        exit(-1);
-    } else {
-        printf("%s = Passed\n", test_name);
-    }
-
 
 
     // =================================
@@ -351,6 +314,23 @@ int main(int argc, char ** argv) {
 
 
     // =================================
+    test_name = "Poll State (Committed)";
+    // =================================
+    test.msgID = POLL_STATE_TX;
+    test.tid = 12345;
+
+    if (send_message(sockfd, tmanagerAddr, &test) < 0) return -1;
+    if (recv_message(sockfd, &received_msg, &client) < 0) return -1;
+    if (!(received_msg.msgID == COMMIT_TX && received_msg.tid == test.tid)) {
+        printf("%s - Failed\n", test_name);
+        exit(-1);
+    } else {
+        printf("%s = Passed\n", test_name);
+    }
+
+
+
+    // =================================
     test_name = "Abort Failure (Invalid TID)";
     // =================================
     test.msgID = ABORT_TX;
@@ -384,10 +364,105 @@ int main(int argc, char ** argv) {
     }
 
 
-    // =================================
-    test_name = "Abort Success ";
-    // =================================
-    // TODO
 
+    // =================================
+    test_name = "Abort Success (In Progress)";
+    // =================================
+    test.msgID = BEGIN_TX;
+    test.tid = 23456;
+
+    if (send_message(sockfd2, tmanagerAddr, &test) < 0) return -1;
+    if (recv_message(sockfd2, &received_msg, &client) < 0) return -1;
+
+    if (!(received_msg.msgID == SUCCESS_TX && received_msg.tid == test.tid)) {
+        printf("%s = Failed\n", test_name);
+        exit(-1);
+    }
+
+    test.msgID = ABORT_TX;
+
+    if (send_message(sockfd2, tmanagerAddr, &test) < 0) return -1;
+    if (recv_message(sockfd2, &received_msg, &client) < 0) return -1;
+
+    if (!(received_msg.msgID == ABORT_TX && received_msg.tid == test.tid)) {
+        printf("%s - Failed\n", test_name);
+        exit(-1);
+    } else {
+        printf("%s = Passed\n", test_name);
+    }
+
+
+
+    // =================================
+    test_name = "Abort Success (Voting)";
+    // =================================
+    test.msgID = BEGIN_TX;
+    test.tid = 23456;
+
+    if (send_message(sockfd, tmanagerAddr, &test) < 0) return -1;
+    if (recv_message(sockfd, &received_msg, &client) < 0) return -1;
+
+    if (!(received_msg.msgID == SUCCESS_TX && received_msg.tid == test.tid)) {
+        printf("%s = Failed\n", test_name);
+        exit(-1);
+    }
+
+    test.msgID = COMMIT_TX;
+
+    if (send_message(sockfd, tmanagerAddr, &test) < 0) return -1;
+
+    if (recv_message(sockfd, &received_msg, &client) < 0) return -1;
+    if (!(received_msg.msgID == PREPARE_TX && received_msg.tid == test.tid)) {
+        printf("%s - Failed\n", test_name);
+        exit(-1);
+    }
+
+    test.msgID = ABORT_TX;
+
+    if (send_message(sockfd, tmanagerAddr, &test) < 0) return -1;
+    if (recv_message(sockfd, &received_msg, &client) < 0) return -1;
+
+    if (!(received_msg.msgID == ABORT_TX && received_msg.tid == test.tid)) {
+        printf("%s - Failed\n", test_name);
+        exit(-1);
+    } else {
+        printf("%s = Passed\n", test_name);
+    }
+
+
+
+    // =================================
+    test_name = "Poll State (Aborted)";
+    // =================================
+    test.msgID = POLL_STATE_TX;
+
+    if (send_message(sockfd, tmanagerAddr, &test) < 0) return -1;
+    if (recv_message(sockfd, &received_msg, &client) < 0) return -1;
+    if (!(received_msg.msgID == ABORT_TX && received_msg.tid == test.tid)) {
+        printf("%s - Failed\n", test_name);
+        exit(-1);
+    } else {
+        printf("%s = Passed\n", test_name);
+    }
+
+
+
+    // =================================
+    test_name = "Poll State (Aborted non-existent)";
+    // =================================
+    test.msgID = POLL_STATE_TX;
+    test.tid = 54321;
+
+    if (send_message(sockfd, tmanagerAddr, &test) < 0) return -1;
+    if (recv_message(sockfd, &received_msg, &client) < 0) return -1;
+    if (!(received_msg.msgID == ABORT_TX && received_msg.tid == test.tid)) {
+        printf("%s - Failed\n", test_name);
+        exit(-1);
+    } else {
+        printf("%s = Passed\n", test_name);
+    }
+
+    // TODO how to test crashing?
+    // Can I start and stop the manager from this prorgram?
 
 }
