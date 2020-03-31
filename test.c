@@ -331,13 +331,7 @@ int main(int argc, char ** argv) {
     }
 
 
-    // TODO worker seems to crash at some point during test 1
-    kill(properties.tw1_pid, SIGINT);
-    start_tw1(&properties);
-    sleep(3);
-
-
-    /*// =================================
+    // =================================
     test_name = "Coordinator crashes before a request to commit - TX should abort";
     // =================================
     {
@@ -362,7 +356,6 @@ int main(int argc, char ** argv) {
         system(cmd);
 
         sleep(1);
-        sleep(4);
 
         if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
             perror("Msync problem");
@@ -419,8 +412,8 @@ int main(int argc, char ** argv) {
         snprintf(cmd, sizeof(cmd), "./cmd commit localhost %d", tw1_cmd_port);
         system(cmd);
 
-        printf("%s - Waiting 31s for commit to abort...\n", test_name);
-        sleep(31);
+        printf("%s - Waiting for commit to abort...\n", test_name);
+        sleep(30);
 
         if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
             perror("Msync problem");
@@ -441,7 +434,8 @@ int main(int argc, char ** argv) {
         }
 
         start_tm(&properties);
-    }*/
+        tm_log = properties.tm_log;
+    }
 
 
 

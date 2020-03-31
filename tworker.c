@@ -319,7 +319,7 @@ int main(int argc, char ** argv) {
           msg.tid = cmdMessage.tid;
           send_message(sockfdTx, tmanagerAddr, &msg);
           waiting = true;
-          begin = clock();
+          begin = time(NULL);
         } break;
           
         case JOINTX: {
@@ -343,7 +343,7 @@ int main(int argc, char ** argv) {
           msg.tid = cmdMessage.tid;
           send_message(sockfdTx, tmanagerAddr, &msg);
           waiting = true;
-          begin = clock();
+          begin = time(NULL);
         } break;
 
         case NEW_A: {
@@ -461,8 +461,12 @@ int main(int argc, char ** argv) {
           msg.tid = log->log.txID;
 
           log->log.txState = WTX_UNCERTAIN;
+
+          if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+            perror("Msync problem");
+          }
           waiting = true;
-          begin = clock();
+          begin = time(NULL);
           send_message(sockfdTx, tmanagerAddr, &msg);
         } break;
 
@@ -487,8 +491,12 @@ int main(int argc, char ** argv) {
           msg.tid = log->log.txID;
 
           log->log.txState = WTX_UNCERTAIN;
+
+          if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+            perror("Msync problem");
+          }
           waiting = true;
-          begin = clock();
+          begin = time(NULL);
           send_message(sockfdTx, tmanagerAddr, &msg);
         } break;
 
@@ -580,7 +588,7 @@ int main(int argc, char ** argv) {
           msg.tid = log->log.txID;
           // enter into an uncertain state until we receive a response from the txmanager
           log->log.txState = WTX_PREPARED;
-          begin = clock();
+          begin = time(NULL);
 
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
             perror("Msync problem"); 
@@ -605,7 +613,7 @@ int main(int argc, char ** argv) {
           msg.msgID = ABORT_TX;
           msg.tid = log->log.txID;
           voteAbortFlag = false;
-          begin = clock();
+          begin = time(NULL);
 
           log->log.txState = WTX_ABORTED;
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
@@ -700,8 +708,8 @@ int main(int argc, char ** argv) {
     // if in uncertain state, wait 30 seconds, then resend prepared every 10 seconds
     // if just waiting, then timeout after 10 seconds
     if (log->log.txState == WTX_UNCERTAIN) {
-      // end = clock();
-      double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
+      // end = time(NULL);
+      double time_spent = (double)(time(NULL) - begin);
       // if waiting and time spent waiting longer than uncertain_timeout, exit. if not waiting, then send a message every 10 seconds after timeout time
       if (waiting && (time_spent >= UNCERTAIN_TIMEOUT)) {
         // write abort to log, revert txData to oldValues
@@ -749,8 +757,9 @@ int main(int argc, char ** argv) {
         }
       }
     } else if (waiting) {
-      double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
+      double time_spent = (double)(time(NULL) - begin);
       if (time_spent >= TIMEOUT) {
+        printf("State: %d\n", log->log.txState);
         perror("Waiting timeout exit\n");
         _exit(EXIT_SUCCESS);
       }
