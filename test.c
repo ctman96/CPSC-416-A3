@@ -332,13 +332,7 @@ int main(int argc, char ** argv) {
     }
 
 
-    // TODO worker seems to crash at some point during test 1
-    kill(properties.tw1_pid, SIGINT);
-    start_tw1(&properties);
-    sleep(3);
-
-
-    /*// =================================
+    // =================================
     test_name = "Coordinator crashes before a request to commit - TX should abort";
     // =================================
     {
@@ -363,7 +357,6 @@ int main(int argc, char ** argv) {
         system(cmd);
 
         sleep(1);
-        sleep(4);
 
         if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
             perror("Msync problem");
@@ -420,8 +413,8 @@ int main(int argc, char ** argv) {
         snprintf(cmd, sizeof(cmd), "./cmd commit localhost %d", tw1_cmd_port);
         system(cmd);
 
-        printf("%s - Waiting 31s for commit to abort...\n", test_name);
-        sleep(31);
+        printf("%s - Waiting for commit to abort...\n", test_name);
+        sleep(30);
 
         if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
             perror("Msync problem");
@@ -442,7 +435,8 @@ int main(int argc, char ** argv) {
         }
 
         start_tm(&properties);
-    }*/
+        tm_log = properties.tm_log;
+    }
 
 
 
@@ -472,125 +466,6 @@ int main(int argc, char ** argv) {
     test_name = "Worker crashes and recovers before TX commits, TX should abort.";
     // =================================
     {
-        printf("=== %s ===\n", test_name);
-
-        // Worker 1 Begins
-        unsigned long test_tid = 1002001;
-        snprintf(cmd, sizeof(cmd), "./cmd begin localhost %d localhost %d %d", tw1_cmd_port, tm_port, test_tid);
-        system(cmd);
-
-        sleep(1);
-
-        if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
-            perror("Msync problem");
-        }
-
-        if (!(tw1_log->log.txState == WTX_ACTIVE && tw1_log->log.txID == test_tid)) {
-            printf("%s = FAILED\n", test_name);
-            exit(-1);
-        } else {
-            printf("%s - Worker 1 Began\n", test_name);
-        }
-
-        // Worker 2 Joins
-        snprintf(cmd, sizeof(cmd), "./cmd join localhost %d localhost %d %d", tw2_cmd_port, tm_port, test_tid);
-        system(cmd);
-
-        sleep(1);
-
-        if (msync(tw2_log, sizeof(struct logFile), MS_SYNC)) {
-            perror("Msync problem");
-        }
-
-        if (!(tw2_log->log.txState == WTX_ACTIVE && tw2_log->log.txID == test_tid)) {
-            printf("%s = FAILED\n", test_name);
-            exit(-1);
-        } else {
-            printf("%s - Worker 2 Joined\n", test_name);
-        }
-
-        // crash wrkr1 before sending prepared
-        snprintf(cmd, sizeof(cmd), "./cmd crash localhost %d", tw1_cmd_port);
-        system(cmd);
-
-        // Worker 2 commits
-        snprintf(cmd, sizeof(cmd), "./cmd commit localhost %d", tw2_cmd_port);
-        system(cmd);
-
-        sleep(2);
-
-        kill(properties.tw1_pid, SIGINT);
-        start_tw1(&properties);
-
-        sleep(10);
-
-        if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
-            perror("Msync problem");
-        }
-
-        printf("TX state: %d", tw1_log->log.txState);
-
-        // worker 1 comes back up, aborts transaction locally
-        if (!(tw1_log->log.txState == WTX_NOTACTIVE)) {
-            printf("%s = FAILED\n", test_name);
-            exit(-1);
-        } else {
-            printf("%s - Worker 1 aborted locally, reverted values\n", test_name);
-        }
-
-        sleep(35);
-
-        // worker 1 comes back up, aborts transaction locally
-        if (!(tw2_log->log.txState == WTX_NOTACTIVE)) {
-            printf("%s = FAILED\n", test_name);
-            exit(-1);
-        } else {
-            printf("%s - Worker 2 aborted due to timeout\n", test_name);
-            printf("%s = PASSED\n", test_name);
-        }
-
-
-        sleep(2);
-
-        if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
-            perror("Msync problem");
-        }
-        if (msync(tw2_log, sizeof(struct logFile), MS_SYNC)) {
-            perror("Msync problem");
-        }
-
-        // printf("TXSTATE of 2: ");
-        // printf("%d\n", tw2_log->log.txState);
-        
-        // printf("TXSTATE of 1: ");
-        // printf("%d\n", tw1_log->log.txState);
-
-        if (!(tw2_log->log.txState == WTX_UNCERTAIN && tw2_log->log.txID == test_tid)) {
-            printf("%s = FAILED\n", test_name);
-            exit(-1);
-        } else {
-            printf("%s - Worker 2 in Uncertain state\n", test_name);
-        }
-        if (!(tw1_log->log.txState == WTX_PREPARED && tw1_log->log.txID == test_tid)) {
-            printf("%s = FAILED\n", test_name);
-            exit(-1);
-        } else {
-            printf("%s - Worker 2 in Prepared state\n", test_name);
-        }
-
-        // now will wait for tx to be aborted by manager (then transition into notactive)
-        sleep(40);
-
-        printf("TXSTATE of 2 (after wait): ");
-        printf("%d\n", tw2_log->log.txState);
-
-        if (!(tw2_log->log.txState == WTX_NOTACTIVE && tw2_log->log.txID == test_tid)) {
-            printf("%s = FAILED\n", test_name);
-            exit(-1);
-        } else {
-            printf("%s - Worker 1 in Not Active\n", test_name);
-            printf("%s = PASSED\n", test_name);
-        }
 
 
 
@@ -657,11 +532,11 @@ int main(int argc, char ** argv) {
             perror("Msync problem");
         }
 
-        // printf("TXSTATE of 2: ");
-        // printf("%d\n", tw2_log->log.txState);
+        printf("TXSTATE of 2: ");
+        printf("%d\n", tw2_log->log.txState);
         
-        // printf("TXSTATE of 1: ");
-        // printf("%d\n", tw1_log->log.txState);
+        printf("TXSTATE of 1: ");
+        printf("%d\n", tw1_log->log.txState);
 
         if (!(tw2_log->log.txState == WTX_UNCERTAIN && tw2_log->log.txID == test_tid)) {
             printf("%s = FAILED\n", test_name);
@@ -699,3 +574,4 @@ int main(int argc, char ** argv) {
     kill(properties.tw2_pid, SIGINT);
     kill(properties.tm_pid, SIGINT);
 }
+
