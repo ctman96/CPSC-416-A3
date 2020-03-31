@@ -2,6 +2,7 @@
 #ifndef TWORKER_H
 #define TWORKER_H 1
 #include <sys/time.h>
+#include <stdbool.h>
 
 #define MAX_NODES 10
 #define IDLEN     64
@@ -56,13 +57,5 @@ struct logFile {
   struct transactionData txData;
   struct workerLog log;
 };
-
-// timeout vars
-bool waiting = false;
-unsigned int uncertainStateCtr = 0;
-clock_t begin;
-clock_t end;
-
-bool voteAbortFlag = false;
 
 #endif /* TWORKER_H */

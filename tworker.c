@@ -12,29 +12,37 @@
 #include <sys/mman.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 #include "msg.h"
 #include "transaction_msg.h"
 #include "tworker.h"
 
+// timeout vars
+bool waiting = false;
+unsigned int uncertainStateCtr = 0;
+clock_t begin;
+clock_t end;
+
+int delayTimer;
+
+bool voteAbortFlag = false;
 
 void usage(char * cmd) {
   printf("usage: %s  cmdportNum txportNum\n",
 	 cmd);
 }
 
-// might move this into new file
-int send_message(int sockfd, struct sockaddr_in client, txMsgType* message) {
-    printf("send_message: client: %d, message: (msgId: %d, tid: %d, state: %d)\n", client.sin_port, message->msgID, message->tid, message->state);
+int send_message(int sockfd, struct addrinfo* tmanager, txMsgType* message) {
+    printf("send_message: message: (msgId: %s, tid: %d)\n", txMsgKindToStr(message->msgID), message->tid);
     int bytesSent;
-    bytesSent = sendto(sockfd, (void *) message, sizeof(*message), 0, (struct sockaddr *) &client, sizeof(client));
+    bytesSent = sendto(sockfd, (void *) message, sizeof(*message), 0, tmanager->ai_addr, tmanager->ai_addrlen);
     if (bytesSent != sizeof(*message)) {
         perror("send_message failed!\n");
         return -1;
     }
     return 0;
 }
+
 
 
 int main(int argc, char ** argv) {
@@ -137,8 +145,9 @@ int main(int argc, char ** argv) {
   if ((log->log.txState == WTX_ACTIVE) || (log->log.txState == WTX_PREPARED)) {
     log->txData.A = log->log.oldA;
     log->txData.B = log->log.oldB;
-    log->txData.IDstring = log->log.oldIDstring;
-    log->log.txState = WTX_ABORTED
+    // use strcpy
+    strcpy(log->txData.IDstring, log->log.oldIDstring);
+    log->log.txState = WTX_ABORTED;
 
     if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
         perror("Msync problem"); 
@@ -207,7 +216,7 @@ int main(int argc, char ** argv) {
       return -1;
   }
 
-  txMsgType cmdMessage;
+  msgType cmdMessage;
   socklen_t cmdLen;
   struct sockaddr_in cmdClient;
 
@@ -261,25 +270,25 @@ int main(int argc, char ** argv) {
       } else if (size >= 0) {
         printf("Got a command packet\n");
     
-      switch (cmdMessage.msgId) {
+      switch (cmdMessage.msgID) {
 
         case BEGINTX:
-        // send a begin transaction message to manager (with txid TID). Read docs for errors
-        // if manager returns error (BC id is already in use), worker exits
-        txMsgType msg;
-        msg.msgId = BEGIN_TX;
-        msg.tid = cmdMessage.tid
-        send_message(sockfdTx, txClient, msg);
-        begin = clock();
-        waiting = true;
+          // send a begin transaction message to manager (with txid TID). Read docs for errors
+          // if manager returns error (BC id is already in use), worker exits
+          txMsgType msg;
+          msg.msgID = BEGIN_TX;
+          msg.tid = cmdMessage.tid;
+          send_message(sockfdTx, tmanagerAddr, &msg);
+          begin = clock();
+          waiting = true;
           break;
           
         case JOINTX:
         // send a join transaction msg to txmanager to join tx TID.
         txMsgType msg;
-        msg.msgId = JOIN_TX;
-        msg.tid = cmdMessage.tid
-        send_message(sockfdTx, txClient, msg);
+        msg.msgID = JOIN_TX;
+        msg.tid = cmdMessage.tid;
+        send_message(sockfdTx, tmanagerAddr, &msg);
         begin = clock();
         waiting = true;
           break;
@@ -338,13 +347,13 @@ int main(int argc, char ** argv) {
 
           // check if old IDstring has already been saved, if not, save it and mark oldSaved
           if ((ID_MASK & log->log.oldSaved) != ID_MASK) {
-            log->log.oldIDstring = log->txData.IDstring;
+            strcpy(log->log.oldIDstring, log->txData.IDstring);
             log->log.oldSaved = log->log.oldSaved | ID_MASK;
             printf("Saved old IDstring\n");
           }
 
-          log->txData.IDstring = cmdMessage.newValue;
-          log->log.newIDstring = cmdMessage.newValue;
+          strcpy(log->txData.IDstring, cmdMessage.newValue);
+          strcpy(log->log.newIDstring, cmdMessage.newValue);
         }
 
         if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
@@ -353,20 +362,12 @@ int main(int argc, char ** argv) {
           break;
 
         case DELAY_RESPONSE:
-        if (cmdMessage.delay >= 0) {
-          sleep(cmdMessage.delay);
-        } else {
-          sleep(abs(cmdMessage.delay));
-          // TODO - need to "perform all the actions required by that decision but crash just after before responding to the the coordinator."?
-          // if need to do additional processing, can set flag and then crash at end of processing.
-          // What descisions need to be made??
-          _exit();
-        }
+          delayTimer = cmdMessage.delay;
           break;
 
         case CRASH:
         // simulate crash by calling _exit()
-        _exit();
+        _exit(EXIT_SUCCESS);
           break;
 
         case COMMIT:
@@ -374,15 +375,15 @@ int main(int argc, char ** argv) {
         txMsgType msg;
         msg.msgId = COMMIT_TX;
         msg.tid = log->log.txID;
-        send_message(sockfdTx, txClient, msg);
+        send_message(sockfdTx, tmanagerAddr, &msg);
           break;
 
         case COMMIT_CRASH:
         // send commit message to txmanager that also tells manager to crash
         txMsgType msg;
-        msg.msgId = COMMIT_CRASH_TX;
+        msg.msgID = COMMIT_CRASH_TX;
         msg.tid = log->log.txID;
-        send_message(sockfdTx, txClient, msg);
+        send_message(sockfdTx, tmanagerAddr, &msg);
           break;
 
         case ABORT:
@@ -390,7 +391,7 @@ int main(int argc, char ** argv) {
         txMsgType msg;
         msg.msgId = ABORT_TX;
         msg.tid = log->log.txID;
-        send_message(sockfdTx, txClient, msg);
+        send_message(sockfdTx, tmanagerAddr, &msg);
           break;
 
         case ABORT_CRASH:
@@ -398,7 +399,7 @@ int main(int argc, char ** argv) {
         txMsgType msg;
         msg.msgId = ABORT_CRASH_TX;
         msg.tid = log->log.txID;
-        send_message(sockfdTx, txClient, msg);
+        send_message(sockfdTx, tmanagerAddr, &msg);
           break;
 
         case VOTE_ABORT:
@@ -415,7 +416,7 @@ int main(int argc, char ** argv) {
 
 
     // now handle txmanager packets
-    txMessage.msgId = 0;
+    txMessage.msgID = 0;
 
     txLen = sizeof(txClient);
     memset(&txClient, 0, sizeof(txClient));
@@ -424,7 +425,7 @@ int main(int argc, char ** argv) {
     if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
       perror("Receiving error:");
       running = 0;
-      abort();
+      _exit(EXIT_SUCCESS);
     } else if (n >= 0) {
       printf("Got a txmanager packet\n");
   
@@ -436,20 +437,26 @@ int main(int argc, char ** argv) {
         txMsgType msg;
         msg.msgId = PREPARE_TX;
         msg.tid = log->log.txID;
-        send_message(sockfdTx, txClient, msg);
         // enter into an uncertain state until we receive a response from the txmanager
         log->log.txState = WTX_UNCERTAIN;
 
         if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
           perror("Msync problem"); 
         }
+        
+        send_message(sockfdTx, tmanagerAddr, &msg);
 
       } else {
         txMsgType msg;
         msg.msgId = ABORT_TX;
         msg.tid = log->log.txID;
-        send_message(sockfdTx, txClient, msg);
         voteAbortFlag = false;
+
+        log->log.txState = WTX_ABORTED;
+        if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+        perror("Msync problem"); 
+
+        send_message(sockfdTx, tmanagerAddr, &msg);
       }
         break;
 
@@ -458,8 +465,8 @@ int main(int argc, char ** argv) {
       // copy newVals to txData just for procedure's sake
       log->txData.A = log->log.newA;
       log->txData.B = log->log.newB;
-      log->txData.IDstring = log->log.newIDstring;
-      
+      strcpy(log->txData.IDstring, log->log.newIDstring);
+            
       // reset oldSaved to indicate no old values saved
       log->log.oldSaved = 0;
 
@@ -479,7 +486,7 @@ int main(int argc, char ** argv) {
       // write abort to log, revert txData to oldValues
       log->txData.A = log->log.oldA;
       log->txData.B = log->log.oldB;
-      log->txData.IDstring = log->log.oldIDstring;
+      strcpy(log->txData.IDstring, log->log.oldIDstring);
 
       // reset oldSaved to indicate no old values saved
       log->log.oldSaved = 0;
@@ -510,7 +517,7 @@ int main(int argc, char ** argv) {
 
       case FAILURE_TX:
       printf("Failure");
-      _exit();
+      _exit(EXIT_SUCCESS);
         break;
 
       default:
@@ -525,12 +532,12 @@ int main(int argc, char ** argv) {
       double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
       // TODO - check logic here. Should be sending a message every 10 seconds after 30 seconds, but I'm writing this at 2 AM
       if (time_spent >= UNCERTAIN_TIMEOUT) {
-        unsigned int waitTime = time_spent - UNCERTAIN_TIMEOUT - uncertainStateCtr * 10;
+        int waitTime = time_spent - UNCERTAIN_TIMEOUT + 10 - uncertainStateCtr * 10;
         if (waitTime >= TIMEOUT) {
           txMsgType msg;
           msg.msgId = POLL_STATE_TX;
           msg.tid = log->log.txID;
-          send_message(sockfdTx, txClient, msg);
+          send_message(sockfdTx, tmanagerAddr, &msg);
           uncertainStateCtr += 1;
         }
       }
