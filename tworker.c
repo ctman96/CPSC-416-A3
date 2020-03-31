@@ -45,6 +45,17 @@ int send_message(int sockfd, struct addrinfo* tmanager, txMsgType* message) {
     return 0;
 }
 
+int send_message2(int sockfd, struct sockaddr_in client, txMsgType* message) {
+    printf("send_message: client: %d, message: (msgId: %s, tid: %d)\n", ntohs(client.sin_port), txMsgKindToStr(message->msgID), message->tid);
+    int bytesSent;
+    bytesSent = sendto(sockfd, (void *) message, sizeof(*message), 0, (struct sockaddr *) &client, sizeof(client));
+    if (bytesSent != sizeof(*message)) {
+        perror("send_message failed!\n");
+        return -1;
+    }
+    return 0;
+}
+
 
 
 int main(int argc, char ** argv) {
@@ -116,6 +127,16 @@ int main(int argc, char ** argv) {
      perror("Log file could not be mapped in:");
      exit(-1);
    }
+  
+  printf("TXstate\n");
+  printf("%d\n", log->log.txState);
+  printf("A \n");
+  printf("%d\n", log->txData.A);
+  printf("B \n");
+  printf("%d\n", log->txData.B);
+  printf("IDstring\n");
+  printf("%d\n", log->txData.IDstring);
+
 
    // Some demo data
   //  strncpy(log->txData.IDstring, "Hi there!! :-)", IDLEN);
@@ -144,7 +165,7 @@ int main(int argc, char ** argv) {
 
   // worker recovery after crash. Only really applicable to undo logging (as documented in README)
   // only should have to revert txData when active or prepared
-  if ((log->log.txState == WTX_ACTIVE) || (log->log.txState == WTX_PREPARED)) {
+  if (log->initialized && (log->log.txState == WTX_ACTIVE) || (log->log.txState == WTX_PREPARED)) {
     log->txData.A = log->log.oldA;
     log->txData.B = log->log.oldB;
     strcpy(log->txData.IDstring, log->log.oldIDstring);
@@ -217,19 +238,6 @@ int main(int argc, char ** argv) {
   socklen_t txLen;
   struct sockaddr_in txClient;
 
-    // Setup tmanager address
-  char *hostname = "localhost";
-  struct addrinfo hints, *tmanagerAddr;
-  tmanagerAddr = NULL;
-  memset(&hints, 0, sizeof(hints));
-  hints.ai_socktype = SOCK_DGRAM;
-  hints.ai_family = AF_INET;
-  hints.ai_protocol = IPPROTO_UDP;
-  if (getaddrinfo(hostname, argv[1], &hints, &tmanagerAddr)) {
-      perror("Couldn't lookup hostname");
-      return -1;
-  }
-
   int running = 1;
   while (running) {
     // check for messages
@@ -259,7 +267,7 @@ int main(int argc, char ** argv) {
     // check for commands. If currently waiting for a response, then skip this
 
     // at beginning, if we have an abort or a commit we know we can set state to notactive as we're done last tx
-    if ((log->log.txState == WTX_COMMITTED) || (log->log.txState == WTX_ABORTED)) {
+    if (log->initialized &&  (log->log.txState == WTX_COMMITTED) || (log->log.txState == WTX_ABORTED)) {
       log->log.txState = WTX_NOTACTIVE;
     }
 
@@ -268,19 +276,33 @@ int main(int argc, char ** argv) {
       cmdLen = sizeof(cmdClient);
       memset(&cmdClient, 0, sizeof(cmdClient));
       int size = recvfrom(sockfdCmd, &cmdMessage, sizeof(cmdMessage), 0, (struct sockaddr *) &cmdClient, &cmdLen);
-      printf("Received message (msgId: %d)\n", cmdMessage.msgID);
 
       if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
         perror("Receiving error:");
         running = 0;
         abort();
       } else if (size >= 0) {
-        printf("Got a command packet\n");
+        // printf("Got a command packet\n");
+        printf("Received cmd message (msgId: %d)\n", cmdMessage.msgID);
       }
     
       switch (cmdMessage.msgID) {
 
         case BEGINTX: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", cmdMessage.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send a begin transaction message to manager (with txid TID). Read docs for errors
           // if manager returns error (BC id is already in use), worker exits
           txMsgType msg;
@@ -292,6 +314,20 @@ int main(int argc, char ** argv) {
         } break;
           
         case JOINTX: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", cmdMessage.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send a join transaction msg to txmanager to join tx TID.
           txMsgType msg;
           msg.msgID = JOIN_TX;
@@ -378,6 +414,20 @@ int main(int argc, char ** argv) {
         } break;
 
         case COMMIT: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", log->log.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send commit message to txmanager
           txMsgType msg;
           msg.msgID = COMMIT_TX;
@@ -386,6 +436,20 @@ int main(int argc, char ** argv) {
         } break;
 
         case COMMIT_CRASH: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", log->log.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send commit message to txmanager that also tells manager to crash
           txMsgType msg;
           msg.msgID = COMMIT_CRASH_TX;
@@ -394,6 +458,20 @@ int main(int argc, char ** argv) {
         } break;
 
         case ABORT: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", log->log.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send abort message to txmanager
           txMsgType msg;
           msg.msgID = ABORT_TX;
@@ -402,6 +480,20 @@ int main(int argc, char ** argv) {
         } break;
 
         case ABORT_CRASH: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", log->log.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send abort message to txmanager that also tells manager to crash
           txMsgType msg;
           msg.msgID = ABORT_CRASH_TX;
@@ -428,7 +520,6 @@ int main(int argc, char ** argv) {
     txLen = sizeof(txClient);
     memset(&txClient, 0, sizeof(txClient));
     int size = recvfrom(sockfdTx, &txMessage, sizeof(txMessage), 0, (struct sockaddr *) &txClient, &txLen);
-    printf("Received message (msgId: %s, tid: %d)\n", txMsgKindToStr(txMessage.msgID), txMessage.tid);
 
     if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
       perror("Receiving error:");
@@ -436,6 +527,7 @@ int main(int argc, char ** argv) {
       _exit(EXIT_SUCCESS);
     } else if (size >= 0) {
       printf("Got a txmanager packet\n");
+      printf("Received tx message (msgId: %s, tid: %d)\n", txMsgKindToStr(txMessage.msgID), txMessage.tid);
     }
   
     switch (txMessage.msgID) {
@@ -457,7 +549,7 @@ int main(int argc, char ** argv) {
             perror("Msync problem"); 
           }
           
-          send_message(sockfdTx, tmanagerAddr, &msg);
+          send_message2(sockfdTx, txClient, &msg);
 
         } else {
           txMsgType msg;
@@ -470,7 +562,7 @@ int main(int argc, char ** argv) {
             perror("Msync problem"); 
           }
 
-          send_message(sockfdTx, tmanagerAddr, &msg);
+          send_message2(sockfdTx, txClient, &msg);
         }
 
         if (delayTimer < 0) {
@@ -538,8 +630,10 @@ int main(int argc, char ** argv) {
 
       case SUCCESS_TX: {
         // on success, set log transaction id to msg.tid
+        log->initialized = -1;
         log->log.txID = txMessage.tid;
         log->log.txState = WTX_ACTIVE;
+        log->log.port = ntohs(txClient.sin_port);
         printf("Success");
         waiting = false;
 
@@ -567,6 +661,21 @@ int main(int argc, char ** argv) {
       if (time_spent >= UNCERTAIN_TIMEOUT) {
         int waitTime = time_spent - UNCERTAIN_TIMEOUT + 10 - uncertainStateCtr * 10;
         if (waitTime >= TIMEOUT) {
+            // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", log->log.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
+
           txMsgType msg;
           msg.msgID = POLL_STATE_TX;
           msg.tid = log->log.txID;

@@ -82,7 +82,7 @@ int main(int argc, char ** argv) {
     logfileFD1 = open(logFileName, O_RDONLY , S_IRUSR | S_IWUSR );
     if (logfileFD1 < 0 ) {
         char msg[256];
-        snprintf(msg, sizeof(msg), "Opening %s failed", logFileName);
+        snprintf(msg, sizeof(msg), "Opening %s failed \n", logFileName);
         perror(msg);
         exit(-1);
     }
@@ -94,7 +94,7 @@ int main(int argc, char ** argv) {
     }
 
     if (msync(log1, sizeof(struct logFile), MS_SYNC)) {
-        perror("Msync problem");
+        perror("Msync problem\n");
     }
 
     /* got the port number create a logfile name */
@@ -124,34 +124,78 @@ int main(int argc, char ** argv) {
     char* test_name;
     char cmd[1024];
 
+    if (log1->initialized || log2->initialized) {
+        printf("Delete logs before running!\n");
+        exit(-1);
+    }
 
     // =================================
-    test_name = "Begin";
+    test_name = "A properly completed transaction";
     // =================================
     {
+        printf("=== %s ===", test_name);
+
+        // Worker 1 Begins
         unsigned long test_tid = 1001001;
         snprintf(cmd, sizeof(cmd), "./cmd begin localhost %d localhost %d %d", tw1_port, tm_port, test_tid);
         system(cmd);
+
+        sleep(1);
 
         if (msync(log1, sizeof(struct logFile), MS_SYNC)) {
             perror("Msync problem");
         }
 
         if (!(log1->log.txState == WTX_ACTIVE && log1->log.txID == test_tid)) {
-            printf("%s = Failed\n", test_name);
+            printf("%s = FAILED\n", test_name);
             exit(-1);
         } else {
-            printf("%s = Passed\n", test_name);
+            printf("%s - Worker 1 Began\n", test_name);
         }
-    }
 
+        // Worker 2 Joins
+        snprintf(cmd, sizeof(cmd), "./cmd join localhost %d localhost %d %d", tw2_port, tm_port, test_tid);
+        system(cmd);
 
+        sleep(1);
 
-    // =================================
-    test_name = "A properly completed transaction";
-    // =================================
-    {
+        if (msync(log2, sizeof(struct logFile), MS_SYNC)) {
+            perror("Msync problem");
+        }
 
+        if (!(log2->log.txState == WTX_ACTIVE && log2->log.txID == test_tid)) {
+            printf("%s = FAILED\n", test_name);
+            exit(-1);
+        } else {
+            printf("%s - Worker 2 Joined\n", test_name);
+        }
+
+        // Worker 1 commits
+        snprintf(cmd, sizeof(cmd), "./cmd commit localhost %d", tw1_port);
+        system(cmd);
+
+        sleep(2);
+
+        if (msync(log1, sizeof(struct logFile), MS_SYNC)) {
+            perror("Msync problem");
+        }
+        if (msync(log2, sizeof(struct logFile), MS_SYNC)) {
+            perror("Msync problem");
+        }
+
+        if (!(log1->log.txState == WTX_NOTACTIVE && log2->log.txID == test_tid)) {
+            printf("%s = FAILED\n", test_name);
+            exit(-1);
+        } else {
+            printf("%s - Worker 1 Completed\n", test_name);
+        }
+        if (!(log2->log.txState == WTX_NOTACTIVE && log2->log.txID == test_tid)) {
+            printf("%s = FAILED\n", test_name);
+            exit(-1);
+        } else {
+            printf("%s - Worker 2 Completed\n", test_name);
+            printf("%s = PASSED\n", test_name);
+        }
     }
 
 
