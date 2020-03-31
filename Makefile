@@ -14,6 +14,9 @@ test_tmanager: transaction_msg.h test_tmanager.c
 tmanager: transaction_msg.h tmanager.h tmanager.c tmanager_begin.c tmanager_join.c tmanager_commit.c tmanager_send_message.c
 	$(CC) $(CFLAGS) -o tmanager tmanager.c tmanager_begin.c tmanager_join.c tmanager_commit.c tmanager_send_message.c tmanager_poll.c
 
+test: msg.h tworker.h test.c
+	$(CC) $(CFLAGS) -o test test.c
+
 cmd: cmd.c msg.h
 	$(CC) $(CFLAGS) -o cmd cmd.c
 

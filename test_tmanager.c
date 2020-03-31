@@ -52,7 +52,7 @@ int main(int argc, char ** argv) {
     unsigned long  port = 111171;
     unsigned long  port2 = 111172;
 
-    if (argc != 2) {
+    if (argc != 4) {
         usage(argv[0]);
         return -1;
     }
@@ -60,6 +60,18 @@ int main(int argc, char ** argv) {
 
     tm_port = strtoul(argv[1], &end, 10);
     if (argv[1] == end) {
+        printf("Port conversion error\n");
+        exit(-1);
+    }
+
+    port = strtoul(argv[2], &end, 10);
+    if (argv[2] == end) {
+        printf("Port conversion error\n");
+        exit(-1);
+    }
+
+    port2 = strtoul(argv[3], &end, 10);
+    if (argv[3] == end) {
         printf("Port conversion error\n");
         exit(-1);
     }

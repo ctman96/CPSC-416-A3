@@ -45,6 +45,17 @@ int send_message(int sockfd, struct addrinfo* tmanager, txMsgType* message) {
     return 0;
 }
 
+int send_message2(int sockfd, struct sockaddr_in client, txMsgType* message) {
+    printf("send_message: client: %d, message: (msgId: %s, tid: %d)\n", ntohs(client.sin_port), txMsgKindToStr(message->msgID), message->tid);
+    int bytesSent;
+    bytesSent = sendto(sockfd, (void *) message, sizeof(*message), 0, (struct sockaddr *) &client, sizeof(client));
+    if (bytesSent != sizeof(*message)) {
+        perror("send_message failed!\n");
+        return -1;
+    }
+    return 0;
+}
+
 
 
 int main(int argc, char ** argv) {
@@ -117,6 +128,7 @@ int main(int argc, char ** argv) {
      exit(-1);
    }
 
+
    // Some demo data
   //  strncpy(log->txData.IDstring, "Hi there!! :-)", IDLEN);
   //  log->txData.A = 10;
@@ -144,10 +156,13 @@ int main(int argc, char ** argv) {
 
   // worker recovery after crash. Only really applicable to undo logging (as documented in README)
   // only should have to revert txData when active or prepared
-  if ((log->log.txState == WTX_ACTIVE) || (log->log.txState == WTX_PREPARED)) {
+  printf("Log initalized:  %d\n", log->initialized);
+  printf("txState:  %s\n", txMsgKindToStr(log->log.txState));
+  if (log->initialized && (log->log.txState == WTX_ACTIVE) || (log->log.txState == WTX_PREPARED)) {
     log->txData.A = log->log.oldA;
     log->txData.B = log->log.oldB;
     strcpy(log->txData.IDstring, log->log.oldIDstring);
+    log->log.oldSaved = 0;
     log->log.txState = WTX_ABORTED;
 
     if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
@@ -156,6 +171,14 @@ int main(int argc, char ** argv) {
 
   }
 
+  printf("TXstate\n");
+  printf("%d\n", log->log.txState);
+  printf("A \n");
+  printf("%d\n", log->txData.A);
+  printf("B \n");
+  printf("%d\n", log->txData.B);
+  printf("IDstring\n");
+  printf("%d\n", log->txData.IDstring);
 
   // create two different sockets, one for cmd and one for txmanager
   int sockfdCmd;
@@ -217,19 +240,6 @@ int main(int argc, char ** argv) {
   socklen_t txLen;
   struct sockaddr_in txClient;
 
-    // Setup tmanager address
-  char *hostname = "localhost";
-  struct addrinfo hints, *tmanagerAddr;
-  tmanagerAddr = NULL;
-  memset(&hints, 0, sizeof(hints));
-  hints.ai_socktype = SOCK_DGRAM;
-  hints.ai_family = AF_INET;
-  hints.ai_protocol = IPPROTO_UDP;
-  if (getaddrinfo(hostname, argv[1], &hints, &tmanagerAddr)) {
-      perror("Couldn't lookup hostname");
-      return -1;
-  }
-
   int running = 1;
   while (running) {
     // check for messages
@@ -259,7 +269,7 @@ int main(int argc, char ** argv) {
     // check for commands. If currently waiting for a response, then skip this
 
     // at beginning, if we have an abort or a commit we know we can set state to notactive as we're done last tx
-    if ((log->log.txState == WTX_COMMITTED) || (log->log.txState == WTX_ABORTED)) {
+    if (log->initialized &&  (log->log.txState == WTX_COMMITTED) || (log->log.txState == WTX_ABORTED)) {
       log->log.txState = WTX_NOTACTIVE;
     }
 
@@ -268,36 +278,62 @@ int main(int argc, char ** argv) {
       cmdLen = sizeof(cmdClient);
       memset(&cmdClient, 0, sizeof(cmdClient));
       int size = recvfrom(sockfdCmd, &cmdMessage, sizeof(cmdMessage), 0, (struct sockaddr *) &cmdClient, &cmdLen);
-      printf("Received message (msgId: %d)\n", cmdMessage.msgID);
 
       if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
         perror("Receiving error:");
         running = 0;
         abort();
       } else if (size >= 0) {
-        printf("Got a command packet\n");
+        // printf("Got a command packet\n");
+        printf("Received cmd message (msgId: %d)\n", cmdMessage.msgID);
       }
     
       switch (cmdMessage.msgID) {
 
         case BEGINTX: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", cmdMessage.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send a begin transaction message to manager (with txid TID). Read docs for errors
           // if manager returns error (BC id is already in use), worker exits
           txMsgType msg;
           msg.msgID = BEGIN_TX;
           msg.tid = cmdMessage.tid;
           send_message(sockfdTx, tmanagerAddr, &msg);
-          begin = clock();
           waiting = true;
         } break;
           
         case JOINTX: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", cmdMessage.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send a join transaction msg to txmanager to join tx TID.
           txMsgType msg;
           msg.msgID = JOIN_TX;
           msg.tid = cmdMessage.tid;
           send_message(sockfdTx, tmanagerAddr, &msg);
-          begin = clock();
           waiting = true;
         } break;
 
@@ -305,6 +341,9 @@ int main(int argc, char ** argv) {
           // if a transaction not underway, update A. else, update log and then update data
           // if in not active state, edit A or B directly
           // if in transaction, then log 
+
+          printf("Before oldSaved: %d\n", log->log.oldSaved);
+
 
           if (log->log.txState == WTX_NOTACTIVE) {
             log->txData.A = cmdMessage.newValue;
@@ -323,10 +362,15 @@ int main(int argc, char ** argv) {
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
               perror("Msync problem"); 
           }
+
+          printf("After oldSaved: %d\n", log->log.oldSaved);
+
         } break;
 
         case NEW_B: {
           // if a transaction not underway, update B. else, update log and then update data
+          printf("Before oldSaved: %d\n", log->log.oldSaved);
+
 
           if (log->log.txState == WTX_NOTACTIVE) {
             log->txData.B = cmdMessage.newValue;
@@ -345,9 +389,14 @@ int main(int argc, char ** argv) {
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
             perror("Msync problem"); 
           }
+
+          printf("After oldSaved: %d\n", log->log.oldSaved);
+
         } break;
 
         case NEW_IDSTR: {
+          printf("Before oldSaved: %d\n", log->log.oldSaved);
+
           if (log->log.txState == WTX_NOTACTIVE) {
             log->txData.A = cmdMessage.newValue;
           } else {
@@ -366,6 +415,9 @@ int main(int argc, char ** argv) {
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
             perror("Msync problem"); 
           }
+
+          printf("After oldSaved: %d\n", log->log.oldSaved);
+
         } break;
 
         case DELAY_RESPONSE: {
@@ -378,6 +430,20 @@ int main(int argc, char ** argv) {
         } break;
 
         case COMMIT: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", log->log.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send commit message to txmanager
           txMsgType msg;
           msg.msgID = COMMIT_TX;
@@ -386,14 +452,45 @@ int main(int argc, char ** argv) {
         } break;
 
         case COMMIT_CRASH: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", log->log.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send commit message to txmanager that also tells manager to crash
           txMsgType msg;
           msg.msgID = COMMIT_CRASH_TX;
           msg.tid = log->log.txID;
+
+          log->log.txState = WTX_UNCERTAIN;
+          waiting = true;
           send_message(sockfdTx, tmanagerAddr, &msg);
         } break;
 
         case ABORT: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", log->log.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send abort message to txmanager
           txMsgType msg;
           msg.msgID = ABORT_TX;
@@ -402,6 +499,20 @@ int main(int argc, char ** argv) {
         } break;
 
         case ABORT_CRASH: {
+          // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", log->log.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
           // send abort message to txmanager that also tells manager to crash
           txMsgType msg;
           msg.msgID = ABORT_CRASH_TX;
@@ -428,7 +539,6 @@ int main(int argc, char ** argv) {
     txLen = sizeof(txClient);
     memset(&txClient, 0, sizeof(txClient));
     int size = recvfrom(sockfdTx, &txMessage, sizeof(txMessage), 0, (struct sockaddr *) &txClient, &txLen);
-    printf("Received message (msgId: %s, tid: %d)\n", txMsgKindToStr(txMessage.msgID), txMessage.tid);
 
     if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
       perror("Receiving error:");
@@ -436,6 +546,7 @@ int main(int argc, char ** argv) {
       _exit(EXIT_SUCCESS);
     } else if (size >= 0) {
       printf("Got a txmanager packet\n");
+      printf("Received tx message (msgId: %s, tid: %d)\n", txMsgKindToStr(txMessage.msgID), txMessage.tid);
     }
   
     switch (txMessage.msgID) {
@@ -452,25 +563,27 @@ int main(int argc, char ** argv) {
           msg.tid = log->log.txID;
           // enter into an uncertain state until we receive a response from the txmanager
           log->log.txState = WTX_UNCERTAIN;
+          begin = clock();
 
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
             perror("Msync problem"); 
           }
           
-          send_message(sockfdTx, tmanagerAddr, &msg);
+          send_message2(sockfdTx, txClient, &msg);
 
         } else {
           txMsgType msg;
           msg.msgID = ABORT_TX;
           msg.tid = log->log.txID;
           voteAbortFlag = false;
+          begin = clock();
 
           log->log.txState = WTX_ABORTED;
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
             perror("Msync problem"); 
           }
 
-          send_message(sockfdTx, tmanagerAddr, &msg);
+          send_message2(sockfdTx, txClient, &msg);
         }
 
         if (delayTimer < 0) {
@@ -538,8 +651,10 @@ int main(int argc, char ** argv) {
 
       case SUCCESS_TX: {
         // on success, set log transaction id to msg.tid
+        log->initialized = -1;
         log->log.txID = txMessage.tid;
         log->log.txState = WTX_ACTIVE;
+        log->log.port = ntohs(txClient.sin_port);
         printf("Success");
         waiting = false;
 
@@ -563,10 +678,28 @@ int main(int argc, char ** argv) {
     if (log->log.txState == WTX_UNCERTAIN) {
       // end = clock();
       double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
-      // TODO - check logic here. Should be sending a message every 10 seconds after 30 seconds, but I'm writing this at 2 AM
-      if (time_spent >= UNCERTAIN_TIMEOUT) {
-        int waitTime = time_spent - UNCERTAIN_TIMEOUT + 10 - uncertainStateCtr * 10;
-        if (waitTime >= TIMEOUT) {
+      // if waiting and time spent waiting longer than uncertain_timeout, exit. if not waiting, then send a message every 10 seconds after timeout time
+      if (waiting && (time_spent >= UNCERTAIN_TIMEOUT)) {
+        _exit(EXIT_SUCCESS);
+
+      } else if (time_spent >= UNCERTAIN_TIMEOUT) {
+        int waitTime = time_spent - UNCERTAIN_TIMEOUT - uncertainStateCtr * 10;
+        if (waitTime >= 0) {
+            // Setup tmanager address
+          char *hostname = "localhost";
+          struct addrinfo hints, *tmanagerAddr;
+          tmanagerAddr = NULL;
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_socktype = SOCK_DGRAM;
+          hints.ai_family = AF_INET;
+          hints.ai_protocol = IPPROTO_UDP;
+          char port_str[16];
+          sprintf(port_str, "%d", log->log.port);
+          if (getaddrinfo(hostname, port_str, &hints, &tmanagerAddr)) {
+              perror("Couldn't lookup hostname");
+              return -1;
+          }
+
           txMsgType msg;
           msg.msgID = POLL_STATE_TX;
           msg.tid = log->log.txID;
@@ -575,11 +708,10 @@ int main(int argc, char ** argv) {
         }
       }
     } else if (waiting) {
-      // end = clock();
       double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
       if (time_spent >= TIMEOUT) {
         waiting = false;
-        // TODO - do whatever is required at this point
+        _exit(EXIT_SUCCESS);
       }
     }
   }

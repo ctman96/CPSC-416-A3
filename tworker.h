@@ -49,6 +49,7 @@ struct workerLog {
   int newA;
   int newB;
   char newIDstring[IDLEN];
+  unsigned long port;
 };
 
 
