@@ -15,3 +15,4 @@ send another prepared message every 10 seconds.
 - From @392, Prof. Acton states that "If there is no transaction under way and you get a 
 voteabort it can simply be ignored." We follow this design descision, in that we only abort
 - As per @407, we do not process ANY messages while delayed.
+- According to @524, we set the transaction to be locally aborted after a timeout of 30 seconds
