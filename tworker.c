@@ -268,6 +268,7 @@ int main(int argc, char ** argv) {
       cmdLen = sizeof(cmdClient);
       memset(&cmdClient, 0, sizeof(cmdClient));
       int size = recvfrom(sockfdCmd, &cmdMessage, sizeof(cmdMessage), 0, (struct sockaddr *) &cmdClient, &cmdLen);
+      printf("Received message (msgId: %d)\n", cmdMessage.msgID);
 
       if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
         perror("Receiving error:");
@@ -427,6 +428,7 @@ int main(int argc, char ** argv) {
     txLen = sizeof(txClient);
     memset(&txClient, 0, sizeof(txClient));
     int size = recvfrom(sockfdTx, &txMessage, sizeof(txMessage), 0, (struct sockaddr *) &txClient, &txLen);
+    printf("Received message (msgId: %s, tid: %d)\n", txMsgKindToStr(txMessage.msgID), txMessage.tid);
 
     if (size == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
       perror("Receiving error:");
