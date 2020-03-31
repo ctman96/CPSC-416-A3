@@ -157,8 +157,9 @@ int main(int argc, char ** argv) {
   // worker recovery after crash. Only really applicable to undo logging (as documented in README)
   // only should have to revert txData when active or prepared
   printf("Log initalized:  %d\n", log->initialized);
-  printf("txState:  %s\n", txMsgKindToStr(log->log.txState));
-  if (log->initialized && (log->log.txState == WTX_ACTIVE) || (log->log.txState == WTX_PREPARED)) {
+  printf("txState:  %d\n", log->log.txState);
+  if (log->initialized && ((log->log.txState == WTX_ACTIVE) || (log->log.txState == WTX_PREPARED))) {
+    printf("Recovery - aborting existing transaction\n");
     log->txData.A = log->log.oldA;
     log->txData.B = log->log.oldB;
     strcpy(log->txData.IDstring, log->log.oldIDstring);
@@ -168,7 +169,13 @@ int main(int argc, char ** argv) {
     if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
         perror("Msync problem"); 
     }
-
+  } else if (! log->initialized) {
+    printf("Initializing log\n");
+    log->initialized = -1;
+    log->log.txState = WTX_NOTACTIVE;
+    if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+      perror("Msync problem");
+    }
   }
 
   printf("TXstate\n");
@@ -448,6 +455,8 @@ int main(int argc, char ** argv) {
           txMsgType msg;
           msg.msgID = COMMIT_TX;
           msg.tid = log->log.txID;
+          log->log.txState = WTX_UNCERTAIN;
+          waiting = true;
           send_message(sockfdTx, tmanagerAddr, &msg);
         } break;
 
@@ -562,7 +571,7 @@ int main(int argc, char ** argv) {
           msg.msgID = PREPARE_TX;
           msg.tid = log->log.txID;
           // enter into an uncertain state until we receive a response from the txmanager
-          log->log.txState = WTX_UNCERTAIN;
+          log->log.txState = WTX_PREPARED;
           begin = clock();
 
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
@@ -576,6 +585,11 @@ int main(int argc, char ** argv) {
           }
 
           send_message2(sockfdTx, txClient, &msg);
+
+          log->log.txState = WTX_UNCERTAIN;
+          if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+            perror("Msync problem");
+          }
 
         } else {
           txMsgType msg;
