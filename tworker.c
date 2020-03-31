@@ -680,7 +680,24 @@ int main(int argc, char ** argv) {
       double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
       // if waiting and time spent waiting longer than uncertain_timeout, exit. if not waiting, then send a message every 10 seconds after timeout time
       if (waiting && (time_spent >= UNCERTAIN_TIMEOUT)) {
-        _exit(EXIT_SUCCESS);
+        // write abort to log, revert txData to oldValues
+        log->txData.A = log->log.oldA;
+        log->txData.B = log->log.oldB;
+        strcpy(log->txData.IDstring, log->log.oldIDstring);
+
+        // reset oldSaved to indicate no old values saved
+        log->log.oldSaved = 0;
+
+        // sync logfile
+        if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+          perror("Msync problem"); 
+        }
+
+        log->log.txState = WTX_ABORTED;
+
+        if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+          perror("Msync problem"); 
+        }
 
       } else if (time_spent >= UNCERTAIN_TIMEOUT) {
         int waitTime = time_spent - UNCERTAIN_TIMEOUT - uncertainStateCtr * 10;
@@ -710,7 +727,6 @@ int main(int argc, char ** argv) {
     } else if (waiting) {
       double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
       if (time_spent >= TIMEOUT) {
-        waiting = false;
         _exit(EXIT_SUCCESS);
       }
     }
