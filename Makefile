@@ -5,7 +5,7 @@ CC=gcc
 CPPFLAGS=
 CFLAGS=-g -Werror-implicit-function-declaration -pedantic -std=gnu99
 
-tworker: tworker.h msg.h tworker.c
+tworker: transaction_msg.h tworker.h msg.h tworker.c
 	$(CC) $(CFLAGS) -o tworker tworker.c
 
 test_tmanager: transaction_msg.h test_tmanager.c

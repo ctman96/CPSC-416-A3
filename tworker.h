@@ -1,19 +1,31 @@
 
 #ifndef TWORKER_H
 #define TWORKER_H 1
-#include <sys/time.h>
+#include <time.h>
+#include <stdbool.h>
 
 #define MAX_NODES 10
 #define IDLEN     64
+
+// bitmasks
+#define A_MASK 1
+#define B_MASK 2
+#define ID_MASK 4
+
+// timeouts
+#define TIMEOUT 10
+#define UNCERTAIN_TIMEOUT 30
 
 // Feel free to modify anything in this file except the
 // struct transactionData
 
 enum workerTxState {
   WTX_NOTACTIVE  = 400,
+  WTX_ACTIVE,
   WTX_ABORTED,
   WTX_PREPARED,
-  WTX_COMMITTED
+  WTX_COMMITTED,
+  WTX_UNCERTAIN
 };
 
 
