@@ -259,6 +259,7 @@ int main(int argc, char ** argv) {
     unsigned long tw1_cmd_port = properties.tw1_cmd_port;
     unsigned long tw2_cmd_port = properties.tw2_cmd_port;
     unsigned long tm_port = properties.tm_port;
+    
 
 
     // =================================
@@ -471,11 +472,98 @@ int main(int argc, char ** argv) {
     }
 
 
-
     // =================================
     test_name = "Worker crashes after recording prepared, but before sending its response TX should abort.";
     // =================================
     {
+        printf("=== %s ===\n", test_name);
+
+        // Worker 1 Begins
+        unsigned long test_tid = 1001001;
+        snprintf(cmd, sizeof(cmd), "./cmd begin localhost %d localhost %d %d", tw1_cmd_port, tm_port, test_tid);
+        system(cmd);
+
+        sleep(1);
+
+        if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
+            perror("Msync problem");
+        }
+
+        if (!(tw1_log->log.txState == WTX_ACTIVE && tw1_log->log.txID == test_tid)) {
+            printf("%s = FAILED\n", test_name);
+            exit(-1);
+        } else {
+            printf("%s - Worker 1 Began\n", test_name);
+        }
+
+        // Worker 2 Joins
+        snprintf(cmd, sizeof(cmd), "./cmd join localhost %d localhost %d %d", tw2_cmd_port, tm_port, test_tid);
+        system(cmd);
+
+        sleep(1);
+
+        if (msync(tw2_log, sizeof(struct logFile), MS_SYNC)) {
+            perror("Msync problem");
+        }
+
+        if (!(tw2_log->log.txState == WTX_ACTIVE && tw2_log->log.txID == test_tid)) {
+            printf("%s = FAILED\n", test_name);
+            exit(-1);
+        } else {
+            printf("%s - Worker 2 Joined\n", test_name);
+        }
+
+        // delay worker 1 by 1 second, then crash it before sending prepared
+        snprintf(cmd, sizeof(cmd), "./cmd delay localhost %d -1", tw1_cmd_port);
+        system(cmd);
+
+        // Worker 2 commits
+        snprintf(cmd, sizeof(cmd), "./cmd commit localhost %d", tw2_cmd_port);
+        system(cmd);
+
+
+
+        sleep(2);
+
+        if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
+            perror("Msync problem");
+        }
+        if (msync(tw2_log, sizeof(struct logFile), MS_SYNC)) {
+            perror("Msync problem");
+        }
+
+        printf("TXSTATE of 2: ");
+        printf("%d\n", tw2_log->log.txState);
+        
+        printf("TXSTATE of 1: ");
+        printf("%d\n", tw1_log->log.txState);
+
+        if (!(tw2_log->log.txState == WTX_UNCERTAIN && tw2_log->log.txID == test_tid)) {
+            printf("%s = FAILED\n", test_name);
+            exit(-1);
+        } else {
+            printf("%s - Worker 2 in Uncertain state\n", test_name);
+        }
+        if (!(tw1_log->log.txState == WTX_PREPARED && tw1_log->log.txID == test_tid)) {
+            printf("%s = FAILED\n", test_name);
+            exit(-1);
+        } else {
+            printf("%s - Worker 2 in Prepared state\n", test_name);
+        }
+
+        // now will wait for tx to be aborted by manager (then transition into notactive)
+        sleep(40);
+
+        printf("TXSTATE of 2 (after wait): ");
+        printf("%d\n", tw2_log->log.txState);
+
+        if (!(tw2_log->log.txState == WTX_NOTACTIVE && tw2_log->log.txID == test_tid)) {
+            printf("%s = FAILED\n", test_name);
+            exit(-1);
+        } else {
+            printf("%s - Worker 1 in Not Active\n", test_name);
+            printf("%s = PASSED\n", test_name);
+        }
 
 
 

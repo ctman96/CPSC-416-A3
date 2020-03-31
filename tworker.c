@@ -276,7 +276,7 @@ int main(int argc, char ** argv) {
     // check for commands. If currently waiting for a response, then skip this
 
     // at beginning, if we have an abort or a commit we know we can set state to notactive as we're done last tx
-    if (log->initialized &&  (log->log.txState == WTX_COMMITTED) || (log->log.txState == WTX_ABORTED)) {
+    if (log->initialized && ((log->log.txState == WTX_COMMITTED) || (log->log.txState == WTX_ABORTED))) {
       log->log.txState = WTX_NOTACTIVE;
     }
 
@@ -725,7 +725,9 @@ int main(int argc, char ** argv) {
           perror("Msync problem"); 
         }
 
+        printf("Timeout waiting for response to COMMIT, aborting transaction\n");
         log->log.txState = WTX_ABORTED;
+        waiting = false;
 
         if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
           perror("Msync problem"); 
