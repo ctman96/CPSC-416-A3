@@ -680,6 +680,11 @@ int main(int argc, char ** argv) {
       double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
       // if waiting and time spent waiting longer than uncertain_timeout, exit. if not waiting, then send a message every 10 seconds after timeout time
       if (waiting && (time_spent >= UNCERTAIN_TIMEOUT)) {
+        log->log.txState = WTX_ABORTED;
+        if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+          perror("Msync problem"); 
+        }
+
         _exit(EXIT_SUCCESS);
 
       } else if (time_spent >= UNCERTAIN_TIMEOUT) {
@@ -710,7 +715,11 @@ int main(int argc, char ** argv) {
     } else if (waiting) {
       double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
       if (time_spent >= TIMEOUT) {
-        waiting = false;
+
+        log->log.txState = WTX_ABORTED;
+        if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
+          perror("Msync problem"); 
+        }
         _exit(EXIT_SUCCESS);
       }
     }
