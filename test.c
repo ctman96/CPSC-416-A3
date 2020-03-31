@@ -18,10 +18,11 @@
 #include <strings.h>
 #include <errno.h>
 #include <sys/socket.h>
+#include <signal.h>
 #include "msg.h"
 
 void usage(char * cmd) {
-    printf("usage: %s  portNum\n",
+    printf("usage: %s  managerPort worker1CmdPort worker1TxPort worker2CmdPort worker2TxPort testPort\n",
            cmd);
 }
 
@@ -38,11 +39,18 @@ int send_message(int sockfd, struct addrinfo* tmanager, msgType* message) {
 
 int main(int argc, char ** argv) {
     unsigned long  tm_port;
-    unsigned long  tw1_port;
-    unsigned long  tw2_port;
+    char* tm_port_str = argv[1];
+    unsigned long  tw1_cmd_port;
+    char* tw1_cmd_port_str = argv[2];
+    unsigned long  tw1_tx_port;
+    char* tw1_tx_port_str = argv[3];
+    unsigned long  tw2_cmd_port;
+    char* tw2_cmd_port_str = argv[4];
+    unsigned long  tw2_tx_port;
+    char* tw2_tx_port_str = argv[5];
     unsigned long  port;
 
-    if (argc != 5) {
+    if (argc != 7) {
         usage(argv[0]);
         return -1;
     }
@@ -54,28 +62,60 @@ int main(int argc, char ** argv) {
         exit(-1);
     }
 
-    tw1_port = strtoul(argv[2], &end, 10);
+    tw1_cmd_port = strtoul(argv[2], &end, 10);
     if (argv[2] == end) {
         printf("Port conversion error\n");
         exit(-1);
     }
 
-    tw2_port = strtoul(argv[3], &end, 10);
+    tw1_tx_port = strtoul(argv[3], &end, 10);
     if (argv[3] == end) {
         printf("Port conversion error\n");
         exit(-1);
     }
 
-    port = strtoul(argv[4], &end, 10);
+    tw2_cmd_port = strtoul(argv[4], &end, 10);
     if (argv[4] == end) {
         printf("Port conversion error\n");
         exit(-1);
     }
 
+    tw2_tx_port = strtoul(argv[5], &end, 10);
+    if (argv[5] == end) {
+        printf("Port conversion error\n");
+        exit(-1);
+    }
+
+    port = strtoul(argv[6], &end, 10);
+    if (argv[6] == end) {
+        printf("Port conversion error\n");
+        exit(-1);
+    }
+
+
     char  logFileName[128];
 
     /* got the port number create a logfile name */
-    snprintf(logFileName, sizeof(logFileName), "TXworker_%u.log", tw1_port);
+    snprintf(logFileName, sizeof(logFileName), "TXworker_%u.log", tw1_cmd_port);
+
+    // Remove existing log
+    if (remove(logFileName) != 0) {
+        perror("Unable to remove worker1 log: ");
+    };
+
+    // Start process
+    pid_t tw1_pid = fork();
+    if (tw1_pid == 0) {
+        // Child process
+        int fd = open("test-tworker1.log", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+        dup2(fd, 1);   // make stdout go to file
+        close(fd);
+        fprintf(stderr, "%s %s\n", tw1_cmd_port_str, tw1_tx_port_str);
+        char* args[]={"./tworker", tw1_cmd_port_str, tw1_tx_port_str, NULL};
+        execvp(args[0], args);
+        exit(0);
+    }
+    sleep(1);
 
     int logfileFD1;
 
@@ -97,8 +137,28 @@ int main(int argc, char ** argv) {
         perror("Msync problem\n");
     }
 
+
     /* got the port number create a logfile name */
-    snprintf(logFileName, sizeof(logFileName), "TXworker_%u.log", tw2_port);
+    snprintf(logFileName, sizeof(logFileName), "TXworker_%u.log", tw2_cmd_port);
+
+    // Remove existing log
+    if (remove(logFileName) != 0) {
+        perror("Unable to remove worker1 log: ");
+    };
+
+    // Start process
+    pid_t tw2_pid = fork();
+    if (tw2_pid == 0) {
+        // Child process
+        int fd = open("test-tworker2.log", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+        dup2(fd, 1);   // make stdout go to file
+        close(fd);
+        fprintf(stderr, "%s %s\n", tw2_cmd_port_str, tw2_tx_port_str);
+        char* args[]={"./tworker", tw2_cmd_port_str, tw2_tx_port_str,  NULL};
+        execvp(args[0], args);
+        exit(0);
+    }
+    sleep(1);
 
     int logfileFD2;
 
@@ -120,6 +180,26 @@ int main(int argc, char ** argv) {
         perror("Msync problem");
     }
 
+    // Manager
+    snprintf(logFileName, sizeof(logFileName), "TXMG_%u.log", tm_port);
+
+    // Remove existing log
+    remove(logFileName);
+
+    // Start process
+    pid_t tm_pid = fork();
+    if (tm_pid == 0) {
+        // Child process
+        int fd = open("test-tmanager.log", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+        dup2(fd, 1);   // make stdout go to file
+        close(fd);
+        fprintf(stderr, "%s\n", tm_port_str);
+        char* args[]={"./tmanager", tm_port_str, NULL};
+        execvp(args[0], args);
+        exit(0);
+    }
+    sleep(1);
+
 
     char* test_name;
     char cmd[1024];
@@ -133,11 +213,11 @@ int main(int argc, char ** argv) {
     test_name = "A properly completed transaction";
     // =================================
     {
-        printf("=== %s ===", test_name);
+        printf("=== %s ===\n", test_name);
 
         // Worker 1 Begins
         unsigned long test_tid = 1001001;
-        snprintf(cmd, sizeof(cmd), "./cmd begin localhost %d localhost %d %d", tw1_port, tm_port, test_tid);
+        snprintf(cmd, sizeof(cmd), "./cmd begin localhost %d localhost %d %d", tw1_cmd_port, tm_port, test_tid);
         system(cmd);
 
         sleep(1);
@@ -154,7 +234,7 @@ int main(int argc, char ** argv) {
         }
 
         // Worker 2 Joins
-        snprintf(cmd, sizeof(cmd), "./cmd join localhost %d localhost %d %d", tw2_port, tm_port, test_tid);
+        snprintf(cmd, sizeof(cmd), "./cmd join localhost %d localhost %d %d", tw2_cmd_port, tm_port, test_tid);
         system(cmd);
 
         sleep(1);
@@ -171,7 +251,7 @@ int main(int argc, char ** argv) {
         }
 
         // Worker 1 commits
-        snprintf(cmd, sizeof(cmd), "./cmd commit localhost %d", tw1_port);
+        snprintf(cmd, sizeof(cmd), "./cmd commit localhost %d", tw1_cmd_port);
         system(cmd);
 
         sleep(2);
@@ -254,4 +334,7 @@ int main(int argc, char ** argv) {
     }
 
 
+    kill(tw1_pid, SIGINT);
+    kill(tw2_pid, SIGINT);
+    kill(tm_pid, SIGINT);
 }
