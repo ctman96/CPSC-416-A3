@@ -569,6 +569,12 @@ int main(int argc, char ** argv) {
             perror("Msync problem"); 
           }
           
+          if (delayTimer < 0) {
+            _exit(EXIT_SUCCESS);
+          } else {
+            delayTimer = 0;
+          }
+
           send_message2(sockfdTx, txClient, &msg);
 
         } else {
@@ -583,24 +589,22 @@ int main(int argc, char ** argv) {
             perror("Msync problem"); 
           }
 
+          if (delayTimer < 0) {
+            _exit(EXIT_SUCCESS);
+          } else {
+            delayTimer = 0;
+          }
+
           send_message2(sockfdTx, txClient, &msg);
         }
 
-        if (delayTimer < 0) {
-          _exit(EXIT_SUCCESS);
-        } else {
-          delayTimer = 0;
-        }
+
 
       } break;
 
       case COMMIT_TX: {
         // got commit message from txmanager, so flush txData
         // copy newVals to txData just for procedure's sake
-
-        if (delayTimer != 0) {
-          sleep(abs(delayTimer));
-        }
 
         log->txData.A = log->log.newA;
         log->txData.B = log->log.newB;
@@ -618,12 +622,6 @@ int main(int argc, char ** argv) {
 
         if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
           perror("Msync problem"); 
-        }
-
-        if (delayTimer < 0) {
-          _exit(EXIT_SUCCESS);
-        } else {
-          delayTimer = 0;
         }
 
       } break;
