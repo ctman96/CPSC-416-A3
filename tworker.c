@@ -25,40 +25,13 @@ unsigned int uncertainStateCtr = 0;
 clock_t begin;
 clock_t end;
 
-int delayTimer;
+int delayTimer = 0;
 
 bool voteAbortFlag = false;
 
 void usage(char * cmd) {
   printf("usage: %s  cmdportNum txportNum\n",
 	 cmd);
-}
-
-static char* txMsgKindToStr(txMsgKind type) {
-    switch (type) {
-        case BEGIN_TX:
-            return "BEGIN_TX";
-        case JOIN_TX:
-            return "JOIN_TX";
-        case COMMIT_TX:
-            return "COMMIT_TX";
-        case COMMIT_CRASH_TX:
-            return "COMMIT_CRASH_TX";
-        case PREPARE_TX:
-            return "PREPARE_TX";
-        case ABORT_TX:
-            return "ABORT_TX";
-        case ABORT_CRASH_TX:
-            return "ABORT_CRASH_TX";
-        case SUCCESS_TX:
-            return "SUCCESS_TX";
-        case FAILURE_TX:
-            return "FAILURE_TX";
-        case POLL_STATE_TX:
-            return "POLL_STATE_TX";
-        default:
-            return "INVALID";
-    }
 }
 
 int send_message(int sockfd, struct addrinfo* tmanager, txMsgType* message) {
@@ -467,6 +440,10 @@ int main(int argc, char ** argv) {
 
       case PREPARE_TX: {
         // vote prepared by default; if have voteAbort flag set, then respond abort instead of prepared
+        if (delayTimer != 0) {
+          sleep(abs(delayTimer));
+        }
+
         if (!voteAbortFlag) {
           txMsgType msg;
           msg.msgID = PREPARE_TX;
@@ -493,11 +470,23 @@ int main(int argc, char ** argv) {
 
           send_message(sockfdTx, tmanagerAddr, &msg);
         }
+
+        if (delayTimer < 0) {
+          _exit(EXIT_SUCCESS);
+        } else {
+          delayTimer = 0;
+        }
+
       } break;
 
       case COMMIT_TX: {
         // got commit message from txmanager, so flush txData
         // copy newVals to txData just for procedure's sake
+
+        if (delayTimer != 0) {
+          sleep(abs(delayTimer));
+        }
+
         log->txData.A = log->log.newA;
         log->txData.B = log->log.newB;
         strcpy(log->txData.IDstring, log->log.newIDstring);
@@ -515,6 +504,13 @@ int main(int argc, char ** argv) {
         if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
           perror("Msync problem"); 
         }
+
+        if (delayTimer < 0) {
+          _exit(EXIT_SUCCESS);
+        } else {
+          delayTimer = 0;
+        }
+
       } break;
 
       case ABORT_TX: {
