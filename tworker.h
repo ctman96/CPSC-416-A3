@@ -1,7 +1,7 @@
 
 #ifndef TWORKER_H
 #define TWORKER_H 1
-#include <sys/time.h>
+#include <time.h>
 #include <stdbool.h>
 
 #define MAX_NODES 10
