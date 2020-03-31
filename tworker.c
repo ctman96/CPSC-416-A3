@@ -127,15 +127,6 @@ int main(int argc, char ** argv) {
      perror("Log file could not be mapped in:");
      exit(-1);
    }
-  
-  printf("TXstate\n");
-  printf("%d\n", log->log.txState);
-  printf("A \n");
-  printf("%d\n", log->txData.A);
-  printf("B \n");
-  printf("%d\n", log->txData.B);
-  printf("IDstring\n");
-  printf("%d\n", log->txData.IDstring);
 
 
    // Some demo data
@@ -165,10 +156,13 @@ int main(int argc, char ** argv) {
 
   // worker recovery after crash. Only really applicable to undo logging (as documented in README)
   // only should have to revert txData when active or prepared
+  printf("Log initalized:  %d\n", log->initialized);
+  printf("txState:  %s\n", txMsgKindToStr(log->log.txState));
   if (log->initialized && (log->log.txState == WTX_ACTIVE) || (log->log.txState == WTX_PREPARED)) {
     log->txData.A = log->log.oldA;
     log->txData.B = log->log.oldB;
     strcpy(log->txData.IDstring, log->log.oldIDstring);
+    log->log.oldSaved = 0;
     log->log.txState = WTX_ABORTED;
 
     if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
@@ -177,6 +171,14 @@ int main(int argc, char ** argv) {
 
   }
 
+  printf("TXstate\n");
+  printf("%d\n", log->log.txState);
+  printf("A \n");
+  printf("%d\n", log->txData.A);
+  printf("B \n");
+  printf("%d\n", log->txData.B);
+  printf("IDstring\n");
+  printf("%d\n", log->txData.IDstring);
 
   // create two different sockets, one for cmd and one for txmanager
   int sockfdCmd;
@@ -309,7 +311,6 @@ int main(int argc, char ** argv) {
           msg.msgID = BEGIN_TX;
           msg.tid = cmdMessage.tid;
           send_message(sockfdTx, tmanagerAddr, &msg);
-          begin = clock();
           waiting = true;
         } break;
           
@@ -333,7 +334,6 @@ int main(int argc, char ** argv) {
           msg.msgID = JOIN_TX;
           msg.tid = cmdMessage.tid;
           send_message(sockfdTx, tmanagerAddr, &msg);
-          begin = clock();
           waiting = true;
         } break;
 
@@ -341,6 +341,9 @@ int main(int argc, char ** argv) {
           // if a transaction not underway, update A. else, update log and then update data
           // if in not active state, edit A or B directly
           // if in transaction, then log 
+
+          printf("Before oldSaved: %d\n", log->log.oldSaved);
+
 
           if (log->log.txState == WTX_NOTACTIVE) {
             log->txData.A = cmdMessage.newValue;
@@ -359,10 +362,15 @@ int main(int argc, char ** argv) {
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
               perror("Msync problem"); 
           }
+
+          printf("After oldSaved: %d\n", log->log.oldSaved);
+
         } break;
 
         case NEW_B: {
           // if a transaction not underway, update B. else, update log and then update data
+          printf("Before oldSaved: %d\n", log->log.oldSaved);
+
 
           if (log->log.txState == WTX_NOTACTIVE) {
             log->txData.B = cmdMessage.newValue;
@@ -381,9 +389,14 @@ int main(int argc, char ** argv) {
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
             perror("Msync problem"); 
           }
+
+          printf("After oldSaved: %d\n", log->log.oldSaved);
+
         } break;
 
         case NEW_IDSTR: {
+          printf("Before oldSaved: %d\n", log->log.oldSaved);
+
           if (log->log.txState == WTX_NOTACTIVE) {
             log->txData.A = cmdMessage.newValue;
           } else {
@@ -402,6 +415,9 @@ int main(int argc, char ** argv) {
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
             perror("Msync problem"); 
           }
+
+          printf("After oldSaved: %d\n", log->log.oldSaved);
+
         } break;
 
         case DELAY_RESPONSE: {
@@ -544,6 +560,7 @@ int main(int argc, char ** argv) {
           msg.tid = log->log.txID;
           // enter into an uncertain state until we receive a response from the txmanager
           log->log.txState = WTX_UNCERTAIN;
+          begin = clock();
 
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
             perror("Msync problem"); 
@@ -556,6 +573,7 @@ int main(int argc, char ** argv) {
           msg.msgID = ABORT_TX;
           msg.tid = log->log.txID;
           voteAbortFlag = false;
+          begin = clock();
 
           log->log.txState = WTX_ABORTED;
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
