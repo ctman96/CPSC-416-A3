@@ -58,7 +58,7 @@ void start_tw1(struct properties* properties) {
 
     // Start process
     properties->tw1_pid = fork();
-    if (tw1_pid == 0) {
+    if (properties->tw1_pid == 0) {
         // Child process
         int fd = open("test-tworker1.log", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
         dup2(fd, 1);   // make stdout go to file
@@ -103,7 +103,7 @@ void start_tw2(struct properties* properties) {
 
     // Start process
     properties->tw2_pid = fork();
-    if (tw2_pid == 0) {
+    if (properties->tw2_pid == 0) {
         // Child process
         int fd = open("test-tworker2.log", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
         dup2(fd, 1);   // make stdout go to file
@@ -136,6 +136,8 @@ void start_tw2(struct properties* properties) {
 }
 
 void start_tm(struct properties* properties) {
+    char  logFileName[128];
+
     // Manager
     snprintf(logFileName, sizeof(logFileName), "TXMG_%u.log", properties->tm_port);
 
@@ -144,7 +146,7 @@ void start_tm(struct properties* properties) {
 
     // Start process
     properties->tm_pid = fork();
-    if (tm_pid == 0) {
+    if (properties->tm_pid == 0) {
         // Child process
         int fd = open("test-tmanager.log", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
         dup2(fd, 1);   // make stdout go to file
@@ -193,7 +195,7 @@ int send_message(int sockfd, struct addrinfo* tmanager, msgType* message) {
 }
 
 int main(int argc, char ** argv) {
-    struct properties;
+    struct properties properties;
     properties.tm_port_str = argv[1];
     properties.tw1_cmd_port_str = argv[2];
     properties.tw1_tx_port_str = argv[3];
@@ -243,8 +245,8 @@ int main(int argc, char ** argv) {
     }
 
     start_tm(&properties);
-    start_tw1(properties);
-    start_tw2(properties);
+    start_tw1(&properties);
+    start_tw2(&properties);
 
 
     char* test_name;
@@ -254,6 +256,10 @@ int main(int argc, char ** argv) {
     struct logFile  * tw1_log = properties.tw1_log;
     struct logFile  * tw2_log = properties.tw2_log;
     struct logFile  * tm_log = properties.tm_log;
+    unsigned long tw1_cmd_port = properties.tw1_cmd_port;
+    unsigned long tw2_cmd_port = properties.tw2_cmd_port;
+    unsigned long tm_port = properties.tm_port;
+
 
     if (tw1_log->initialized || tw2_log->initialized) {
         printf("Delete logs before running!\n");
@@ -400,6 +406,7 @@ int main(int argc, char ** argv) {
             printf("%s = PASSED\n", test_name);
         }
 
+        // TODO
     }
 
 
@@ -447,7 +454,7 @@ int main(int argc, char ** argv) {
     }
 
 
-    kill(tw1_pid, SIGINT);
-    kill(tw2_pid, SIGINT);
-    kill(tm_pid, SIGINT);
+    kill(properties.tw1_pid, SIGINT);
+    kill(properties.tw2_pid, SIGINT);
+    kill(properties.tm_pid, SIGINT);
 }
