@@ -319,6 +319,7 @@ int main(int argc, char ** argv) {
           msg.tid = cmdMessage.tid;
           send_message(sockfdTx, tmanagerAddr, &msg);
           waiting = true;
+          begin = clock();
         } break;
           
         case JOINTX: {
@@ -342,6 +343,7 @@ int main(int argc, char ** argv) {
           msg.tid = cmdMessage.tid;
           send_message(sockfdTx, tmanagerAddr, &msg);
           waiting = true;
+          begin = clock();
         } break;
 
         case NEW_A: {
@@ -350,6 +352,7 @@ int main(int argc, char ** argv) {
           // if in transaction, then log 
 
           printf("Before oldSaved: %d\n", log->log.oldSaved);
+          printf("Before A: %d\n", log->txData.A);
 
 
           if (log->log.txState == WTX_NOTACTIVE) {
@@ -367,10 +370,11 @@ int main(int argc, char ** argv) {
           }
 
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
-              perror("Msync problem"); 
+            perror("Msync problem");
           }
 
           printf("After oldSaved: %d\n", log->log.oldSaved);
+          printf("After A: %d\n", log->txData.A);
 
         } break;
 
@@ -394,7 +398,7 @@ int main(int argc, char ** argv) {
           }
 
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
-            perror("Msync problem"); 
+            perror("Msync problem");
           }
 
           printf("After oldSaved: %d\n", log->log.oldSaved);
@@ -420,7 +424,7 @@ int main(int argc, char ** argv) {
           }
 
           if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
-            perror("Msync problem"); 
+            perror("Msync problem");
           }
 
           printf("After oldSaved: %d\n", log->log.oldSaved);
@@ -455,8 +459,10 @@ int main(int argc, char ** argv) {
           txMsgType msg;
           msg.msgID = COMMIT_TX;
           msg.tid = log->log.txID;
+
           log->log.txState = WTX_UNCERTAIN;
           waiting = true;
+          begin = clock();
           send_message(sockfdTx, tmanagerAddr, &msg);
         } break;
 
@@ -482,6 +488,7 @@ int main(int argc, char ** argv) {
 
           log->log.txState = WTX_UNCERTAIN;
           waiting = true;
+          begin = clock();
           send_message(sockfdTx, tmanagerAddr, &msg);
         } break;
 
@@ -561,6 +568,7 @@ int main(int argc, char ** argv) {
     switch (txMessage.msgID) {
 
       case PREPARE_TX: {
+        waiting = false;
         // vote prepared by default; if have voteAbort flag set, then respond abort instead of prepared
         if (delayTimer != 0) {
           sleep(abs(delayTimer));
@@ -579,6 +587,7 @@ int main(int argc, char ** argv) {
           }
           
           if (delayTimer < 0) {
+            perror("Negative Delay Crash\n");
             _exit(EXIT_SUCCESS);
           } else {
             delayTimer = 0;
@@ -604,6 +613,7 @@ int main(int argc, char ** argv) {
           }
 
           if (delayTimer < 0) {
+            perror("Negative Delay Crash\n");
             _exit(EXIT_SUCCESS);
           } else {
             delayTimer = 0;
@@ -633,6 +643,7 @@ int main(int argc, char ** argv) {
         }
 
         log->log.txState = WTX_COMMITTED;
+        uncertainStateCtr = 0;
 
         if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
           perror("Msync problem"); 
@@ -655,6 +666,7 @@ int main(int argc, char ** argv) {
         }
 
         log->log.txState = WTX_ABORTED;
+        uncertainStateCtr = 0;
 
         if (msync(log, sizeof(struct logFile), MS_SYNC | MS_INVALIDATE)) {
           perror("Msync problem"); 
@@ -676,7 +688,7 @@ int main(int argc, char ** argv) {
       } break;
 
       case FAILURE_TX: {
-        printf("Failure");
+        perror("Failure");
         _exit(EXIT_SUCCESS);
       } break;
 
@@ -739,6 +751,7 @@ int main(int argc, char ** argv) {
     } else if (waiting) {
       double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
       if (time_spent >= TIMEOUT) {
+        perror("Waiting timeout exit\n");
         _exit(EXIT_SUCCESS);
       }
     }

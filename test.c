@@ -60,9 +60,9 @@ void start_tw1(struct properties* properties) {
     properties->tw1_pid = fork();
     if (properties->tw1_pid == 0) {
         // Child process
-        int fd = open("test-tworker1.log", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-        dup2(fd, 1);   // make stdout go to file
-        close(fd);
+        // int fd = open("test-tworker1.log", O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU);
+        // dup2(fd, 1);   // make stdout go to file
+        // close(fd);
         char* args[]={"./tworker", properties->tw1_cmd_port_str, properties->tw1_tx_port_str, NULL};
         execvp(args[0], args);
         exit(0);
@@ -105,9 +105,9 @@ void start_tw2(struct properties* properties) {
     properties->tw2_pid = fork();
     if (properties->tw2_pid == 0) {
         // Child process
-        int fd = open("test-tworker2.log", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-        dup2(fd, 1);   // make stdout go to file
-        close(fd);
+        // int fd = open("test-tworker2.log", O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU);
+        // dup2(fd, 1);   // make stdout go to file
+        // close(fd);
         char* args[]={"./tworker", properties->tw2_cmd_port_str, properties->tw2_tx_port_str,  NULL};
         execvp(args[0], args);
         exit(0);
@@ -148,9 +148,9 @@ void start_tm(struct properties* properties) {
     properties->tm_pid = fork();
     if (properties->tm_pid == 0) {
         // Child process
-        int fd = open("test-tmanager.log", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-        dup2(fd, 1);   // make stdout go to file
-        close(fd);
+        // int fd = open("test-tmanager.log", O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU);
+        // dup2(fd, 1);   // make stdout go to file
+        // close(fd);
         char* args[]={"./tmanager", properties->tm_port_str, NULL};
         execvp(args[0], args);
         exit(0);
@@ -261,6 +261,7 @@ int main(int argc, char ** argv) {
     unsigned long tm_port = properties.tm_port;
     
 
+
     // =================================
     test_name = "A properly completed transaction";
     // =================================
@@ -331,8 +332,13 @@ int main(int argc, char ** argv) {
     }
 
 
+    // TODO worker seems to crash at some point during test 1
+    kill(properties.tw1_pid, SIGINT);
+    start_tw1(&properties);
+    sleep(3);
 
-    // =================================
+
+    /*// =================================
     test_name = "Coordinator crashes before a request to commit - TX should abort";
     // =================================
     {
@@ -342,25 +348,34 @@ int main(int argc, char ** argv) {
         if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
             perror("Msync problem");
         }
+
         if (tw1_log->log.txState != WTX_NOTACTIVE) {
             printf("state: %d\n", tw1_log->log.txState);
             printf("%s = FAILED\n", test_name);
             exit(-1);
         }
 
+        int initA = 1337;
+        int newA = 69420;
+
         // Set A initial value
-        snprintf(cmd, sizeof(cmd), "./cmd newa localhost %d %d", tw1_cmd_port, 1337);
+        snprintf(cmd, sizeof(cmd), "./cmd newa localhost %d %d", tw1_cmd_port, initA);
         system(cmd);
-        sleep(3);
+
+        sleep(1);
+        sleep(4);
+
+        if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
+            perror("Msync problem");
+        }
         if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
             perror("Msync problem");
         }
 
-        if (tw1_log->txData.A == 1337) {
+        if (tw1_log->txData.A == initA) {
             printf("%s - Worker 1 Set A\n", test_name);
         } else {
             printf("A: %d\n", tw1_log->txData.A);
-            printf("");
             printf("%s = FAILED\n", test_name);
             exit(-1);
         }
@@ -384,13 +399,13 @@ int main(int argc, char ** argv) {
         }
 
         // Set A new value
-        snprintf(cmd, sizeof(cmd), "./cmd newa localhost %d %d", tw1_cmd_port, 69420);
+        snprintf(cmd, sizeof(cmd), "./cmd newa localhost %d %d", tw1_cmd_port, newA);
         system(cmd);
         sleep(1);
         if (msync(tw1_log, sizeof(struct logFile), MS_SYNC)) {
             perror("Msync problem");
         }
-        if (tw1_log->log.newA == 69420 && tw1_log->txData.A == 69420 && tw1_log->log.oldA == 1337) {
+        if (tw1_log->log.newA == newA && tw1_log->txData.A == newA && tw1_log->log.oldA == initA) {
             printf("%s - Worker 1 Set A\n", test_name);
         } else {
             printf("%s = FAILED\n", test_name);
@@ -427,7 +442,7 @@ int main(int argc, char ** argv) {
         }
 
         start_tm(&properties);
-    }
+    }*/
 
 
 
