@@ -5,7 +5,7 @@
 #include "tmanager.h"
 
 int send_message(int sockfd, struct sockaddr_in client, txMsgType* message) {
-    printf("send_message: client: %d, message: (msgId: %d, tid: %d, state: %d)\n", client.sin_port, message->msgID, message->tid, message->state);
+    printf("send_message: client: %d, message: (msgId: %s, tid: %d)\n", ntohs(client.sin_port), txMsgKindToStr(message->msgID), message->tid);
     int bytesSent;
     bytesSent = sendto(sockfd, (void *) message, sizeof(*message), 0, (struct sockaddr *) &client, sizeof(client));
     if (bytesSent != sizeof(*message)) {

@@ -129,7 +129,7 @@ int tm_abort(int sockfd, struct transactionSet * txlog, uint32_t tid, struct soc
             t = i;
     }
 
-    if (t == -1 || txlog->transaction[t].tstate != TX_VOTING || txlog->transaction[t].tstate != TX_INPROGRESS) {
+    if (t == -1 || (txlog->transaction[t].tstate != TX_VOTING && txlog->transaction[t].tstate != TX_INPROGRESS)) {
         if (t == -1)
             printf("Transaction %d does not exist, replying failure\n", tid);
         else
