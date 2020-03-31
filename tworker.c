@@ -470,6 +470,9 @@ int main(int argc, char ** argv) {
           txMsgType msg;
           msg.msgID = COMMIT_CRASH_TX;
           msg.tid = log->log.txID;
+
+          log->log.txState = WTX_UNCERTAIN;
+          waiting = true;
           send_message(sockfdTx, tmanagerAddr, &msg);
         } break;
 
@@ -675,10 +678,13 @@ int main(int argc, char ** argv) {
     if (log->log.txState == WTX_UNCERTAIN) {
       // end = clock();
       double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
-      // TODO - check logic here. Should be sending a message every 10 seconds after 30 seconds, but I'm writing this at 2 AM
-      if (time_spent >= UNCERTAIN_TIMEOUT) {
-        int waitTime = time_spent - UNCERTAIN_TIMEOUT + 10 - uncertainStateCtr * 10;
-        if (waitTime >= TIMEOUT) {
+      // if waiting and time spent waiting longer than uncertain_timeout, exit. if not waiting, then send a message every 10 seconds after timeout time
+      if (waiting && (time_spent >= UNCERTAIN_TIMEOUT)) {
+        _exit(EXIT_SUCCESS);
+
+      } else if (time_spent >= UNCERTAIN_TIMEOUT) {
+        int waitTime = time_spent - UNCERTAIN_TIMEOUT - uncertainStateCtr * 10;
+        if (waitTime >= 0) {
             // Setup tmanager address
           char *hostname = "localhost";
           struct addrinfo hints, *tmanagerAddr;
@@ -702,11 +708,10 @@ int main(int argc, char ** argv) {
         }
       }
     } else if (waiting) {
-      // end = clock();
       double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
       if (time_spent >= TIMEOUT) {
         waiting = false;
-        // TODO - do whatever is required at this point
+        _exit(EXIT_SUCCESS);
       }
     }
   }
