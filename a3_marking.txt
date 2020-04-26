@@ -1,4 +1,5 @@
 Total before late penalty [44/51]
+    ***Total after 5.13% late penalty is 41.74
 
 [4/4] Test 01 - Basic transaction 
      (1)  Transaction is in progress and values are correct [2/2]
@@ -95,3 +96,4 @@ Total before late penalty [44/51]
      (2) commitcrash and death of all workers, all the workers must be prepared and
          polling [/1]
      (3) + (4)  All workers must be finished at this point and have commit values[0/1]
+
