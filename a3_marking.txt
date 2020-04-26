@@ -1,101 +1,97 @@
-Total before late penalty [0/56]
+Total before late penalty [44/51]
 
-[/4] Test 01 - Basic transaction 
-     (1)  Transaction is in progress and values are correct [/2]
-     (2)  Transaction is no longer in progress and values are correct [/2]
+[4/4] Test 01 - Basic transaction 
+     (1)  Transaction is in progress and values are correct [2/2]
+     (2)  Transaction is no longer in progress and values are correct [2/2]
 
-[/5] Test 02 - Reloads the file, changes values and aborts (Just 1 update)
+[5/5] Test 02 - Reloads the file, changes values and aborts (Just 1 update)
      (1)  Transaction is in progress [/1]
      (2)  I contents should be 1, -1    [/1]
           M contents should be 10, -10  [/1]
 	  E contents should match I line [/1]
 	  Transaction should not be in progress   [/1]
 
-[/6]  Test 03 - Load an existing file, do 3 updates, then abort 
+[6/6]  Test 03 - Load an existing file, do 3 updates, then abort 
      (1) Transaction in progress                    [/1]
      (2) 5 lines, last line should match first line [/2]
-         3 middle lines should be (30, -30), (31, -32), (33, -34) [/2]
+         3 middle lines should be (30, -30), (31, -32), (33, -34) [2/2]
 
      (3) Transaction is not in progress [/1]
      
-[/6]  Test 04 - Do one transaction and commit,  do a 2nd transaction, kill coordinator, have worker commit
+[4/6]  Test 04 - Do one transaction and commit,  do a 2nd transaction, kill coordinator, have worker commit
                transaction should abort and roll back
-     (1) No transaction in progress [/1]
-     (2) Transaction 333 should be running [/1]
-     (3) Transaction 333 should be running, some uncertain state, or aborted [/1]
-     (4) Transaction 333 should no longer be active, could be marked aborted, but results rolled back [/1]
+     (1) No transaction in progress [0/1]
+     (2) Transaction 333 should be running [1/1]
+     (3) Transaction 333 should be running, some uncertain state, or aborted [1/1]
+     (4) Transaction 333 should no longer be active, could be marked aborted, but results rolled back [1/1]
      (5) Initial line should be 444 -445 after TX 1 complete
          Next line should reflect the TX 2 values 
-         Last line should match first line, indicating rollback. [/2]
+         Last line should match first line, indicating rollback. [1/2]
 
-[/2]  Test 05 - Transaction that has multiple updates and then commits
+[2/2]  Test 05 - Transaction that has multiple updates and then commits
      (1) Transaction in progress
      (2) Transaction values should be 553, -553 and transaction state
-         must transaction from in progress to done/inactive [/2]
+         must transition from in progress to done/inactive [/2]
 
-[/2]  Test 06 - Transaction thas has multiple updates and then aborts
+[2/2]  Test 06 - Transaction that has multiple updates and then aborts
      (1) Transaction in progress
      (2) Transaction values should be 660 -660 and transaction state (i.e.
          the first line after 3
-         must transaction from in progress to done/inactive [/2]
+         must transition from in-progress to done/inactive [/2]
 
-[/5] Test 07 - Transaction with multiple workers
-     (1) Precommit, all TX should be active [/2]
-     (2) All TX should no longer be active  [/1]
-     (3) The 3 workers should have the values of 77[012] and -77[012]  [/2]
-
-[/4] Test 07 - Transaction with multiple workers one issues abort
+[4/4] Test 07 - Transaction with multiple workers one issues commit
      (1) Precommit, all TX should be active [/1]
      (2) All TX should no longer be active  [/1]
-     (3) The 3 workers should have 0s and nulls  [/2]
+     (3) The 3 workers should have themed numbers based on 7s  [/2]
 
-[/4] Test 08 - Transaction with multiple workers, one told to vote abort,
+[4/4] Test 08 - Transaction with multiple workers, one told to vote abort,
      (1) Preabort, all TX should be active
      (2) All TX should be active except for maybe 3, which may be done [/1]
      (3) Post abovet all the workers should no longer be active, may be abort or inactive [/1]
      (3) The results first 3 should indicate updates, and last 3 all 0s (abort)  [/2]
 
-[/5] Test 09 - Worker dies prior to commit. Commit performed must result in abort.
+[5/5] Test 09 - Worker dies prior to commit. Commit performed must result in abort.
               Worker restarts, it must abort. All TX must be in same state at end.
      (1) Precommit all in progress
      (2) After commit and timeout 1,2 abort/inactive, 3 in progress [/2]
      (3) Worker 3 was restarted, it should abort the transaction - all abort [/1]
      (4) First group indicates tx in progress, 2nd group all aborted [/2]
 
-[/4] Test 10 Coordinator can handle multiple transactions at once
+[4/4] Test 10 Coordinator can handle multiple transactions at once
      (1) 4 workers in 2 different transactions, both in progress [/1]
      (2) 1 transaction has committed - other should be active    [/1]
      (3) 2nd TX has updated and commits, all tx should no longer be active
          last set of values should be +/-13 and +/-260           [/2]
 	 
-[/3] Test 11 Coordinator is to record abort and then crash.
+[0/3] Test 11 Coordinator is to record abort and then crash.
      (1) Initial transactions in progress
      (2) States after worker told to abortcrash - depending upon
          implementation workers can be in any number of states
      (3) Coordinator has been restarted and workers prodded to life
          if needed. All workers should now have changed state to
-	 no longer be active   [/1]
+	 no longer be active   [0/1]
      (4) Values should show parital values in first group and then
-         abort which rolls everything back to 0s     [/2]
+         abort which rolls everything back to 0s     [0/2]
 
-[/2] Test 12  3 workers, worker 3 set to crash after responding to prepare message
+[1/2] Test 12  3 workers, worker 3 set to crash after responding to prepare message
              since all workers vote prepared the TX is to commit.
      (1) Initial TX in progress
-     (2) After worker votes and crashes worker 3 in prepared [/1]
+     (2) After worker votes and crashes worker 3 in prepared [1/1]
      (3) Tx should be completed
-     (4) Actual recorded values should show TX completed [/1]
+     (4) Actual recorded values should show TX completed [0/1]
      
-[/2] Test 13  - 3 workers, 1 worker is told to send the commitcrash command. The TX manager should
+[2/2] Test 13  - 3 workers, 1 worker is told to send the commitcrash command. The TX manager should
             poll everyone, they are prepared so are awaiting a decision. The poll checker should
 	    see the polls. When the txmanager restarts the transaction should commit.
      (1) Initial TX in progress
      (2) commitcrash so all the workers must be prepared and all polling [/1] (marks is for polling activity)
      (3) + (4)  All workers must be finished at this point and have commit values[/1]
 
-[/2] Test 14  - 3 workers, 1 worker is told to send the commitcrash command. The TX manager should
-            poll everyone, they are prepared so are awaiting a decision. The poll checker should
+[1/2] Test 14  - 3 workers, 1 worker is told to send the commitcrash command. The TX manager should
+            poll everyone and they will vote commit. All of the workers are then killed and
+	    restarted. Since the are prepared they need to check for a decision. The poll checker should
 	    see the polls. When the txmanager restarts the transaction should commit.
      (1) Initial TX in progress
      (2) commitcrash and death of all workers, all the workers must be prepared and
          polling [/1]
-     (3) + (4)  All workers must be finished at this point and have commit values[/1]
+     (3) + (4)  All workers must be finished at this point and have commit values[0/1]
